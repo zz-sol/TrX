@@ -31,39 +31,10 @@ TrX provides a complete cryptographic infrastructure for confidential transactio
 Add TrX to your `Cargo.toml`:
 ```toml
 [dependencies]
-trx = { git = "https://github.com/yourusername/TrX" }
+trx = { git = "https://github.com/zz-sol/TrX" }
 ```
 
-### Basic Usage
-```rust
-use trx::{TrxCrypto, PairingEngine, DecryptionContext, BatchContext};
-use std::sync::Arc;
-
-// 1. Initialize system
-let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold)?;
-let setup = Arc::new(trx.generate_trusted_setup(&mut rng, max_batch, max_contexts)?);
-let epoch = trx.run_dkg(&mut rng, &validators, threshold as u32, setup.clone())?;
-
-// 2. Client encrypts transaction
-let encrypted = trx.encrypt_transaction(&epoch.public_key, payload, aad, &client_key)?;
-
-// 3. Batch and commit
-let batch = vec![encrypted];
-let context = DecryptionContext { block_height: 1, context_index: 0 };
-let commitment = TrxCrypto::<PairingEngine>::compute_digest(&batch, &context, &setup)?;
-let eval_proofs = TrxCrypto::<PairingEngine>::compute_eval_proofs(&batch, &context, &setup)?;
-
-// 4. Validators create partial decryptions (collect from threshold validators)
-// ... partials collected from validators ...
-
-// 5. Combine and decrypt
-let batch_ctx = BatchContext { batch: &batch, context: &context, commitment: &commitment, eval_proofs: &eval_proofs };
-let results = trx.combine_and_decrypt(partials, batch_ctx, threshold as u32, &setup, &epoch.public_key.agg_key)?;
-```
-
-See [examples/toy_example.rs](examples/toy_example.rs) for a complete working example.
-
-## Complete Example: Small Chain
+## Toy Example
 
 This example demonstrates a complete flow with 4 validators (threshold=2, requiring 3 shares) and one confidential transaction.
 
@@ -75,7 +46,6 @@ use rand::thread_rng;
 use trx::{
     BatchContext, DecryptionContext, EncryptedMempool, PairingEngine, TrxCrypto, ValidatorId,
 };
-
 
 /// Number of validators in the network
 const NUM_VALIDATORS: usize = 4;
@@ -300,18 +270,6 @@ Implemented in [src/crypto/signatures.rs](src/crypto/signatures.rs):
 
 ## Technical Details
 
-### Batch Commitment & KZG Proofs
-- **Polynomial construction**: Per-tx scalars derived from `hash(context || ciphertext.payload || associated_data)`
-- **KZG commitment**: Computed against the trusted SRS in `TrustedSetup`
-- **Eval proofs**: KZG openings at evaluation points `x = 1..batch_len`
-
-### Security Properties
-The `combine_and_decrypt` function validates:
-- ✓ Context consistency across all decryption shares
-- ✓ Eval proofs match the provided `BatchCommitment`
-- ✓ Eval proofs open at expected points
-- ✓ Threshold requirement met before aggregation
-
 ### Signature Schemes
 | Component | Scheme | Location | Purpose |
 |-----------|--------|----------|---------|
@@ -324,67 +282,6 @@ The `combine_and_decrypt` function validates:
 - `threshold < parties` (typically `parties` is a power of two for Tess)
 - Batch size constraint: `batch.len() + 1 <= setup.srs.powers_of_g.len()`
 - Ed25519 signatures use 32-byte Blake3 hash
-
-### Dependencies
-```toml
-tess = { git = "https://github.com/zz-sol/Tess", features = ["blst"] }
-solana-bls-signatures = { git = "https://github.com/anza-xyz/solana-sdk", ... }
-ed25519-dalek = "2.1"
-blake3 = "1"
-```
-
-
-## Error Handling
-| Error Type | Description |
-|------------|-------------|
-| `TrxError::Backend` | Cryptographic operation failures |
-| `TrxError::InvalidInput` | Validation failures (bad signatures, malformed data) |
-| `TrxError::InvalidConfig` | Configuration constraint violations |
-
-See [src/core/errors.rs](src/core/errors.rs) for complete error definitions.
-
-## Testing
-
-### Local Testing
-
-Run the test suite:
-```bash
-cargo test
-```
-
-Run the complete flow test:
-```bash
-cargo test --test flow
-```
-
-Run the example:
-```bash
-cargo run --example toy_example
-```
-
-### Platform-Specific Testing
-
-Test on specific targets:
-```bash
-# macOS
-cargo test --target x86_64-apple-darwin
-
-# Linux
-cargo test --target x86_64-unknown-linux-gnu
-
-# iOS (build only, library target)
-cargo build --target aarch64-apple-ios --lib
-cargo build --target aarch64-apple-ios-sim --lib
-```
-
-### Continuous Integration
-
-The CI pipeline automatically tests on:
-- **Ubuntu Latest**: Full test suite on Linux
-- **macOS Latest**: Full test suite on macOS
-- **iOS**: Build verification for `aarch64-apple-ios`, `x86_64-apple-ios`, and `aarch64-apple-ios-sim`
-
-All tests must pass on both Ubuntu and macOS before merging.
 
 ## Project Structure
 
