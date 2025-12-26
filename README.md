@@ -6,6 +6,8 @@
 
 A production-ready threshold-encrypted transaction system for blockchain networks, built on [Tess](https://github.com/zz-sol/Tess).
 
+> **Implementation Note**: This implementation uses the [Tess](https://github.com/zz-sol/Tess) threshold encryption library for core encryption/decryption operations, rather than implementing the custom witness encryption construction from [the paper](https://eprint.iacr.org/2025/2032).
+
 If you use TrX in your research, please cite the original paper:
 ```bibtex
 @misc{cryptoeprint:2025/2032,
