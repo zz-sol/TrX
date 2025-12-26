@@ -57,23 +57,9 @@ use tess::{DensePolynomial, FieldElement, Fr, PairingBackend, PolynomialCommitme
 use tracing::instrument;
 
 use crate::utils::scalar_from_hash;
-use crate::{DecryptionContext, EncryptedTransaction, TrustedSetup, TrxError};
-
-/// KZG polynomial commitment over a batch of encrypted transactions.
-///
-/// This commitment binds the proposer to a specific set of transactions in a
-/// succinctly verifiable way. The polynomial has degree `n-1` for `n` transactions,
-/// with each coefficient derived from `BLAKE3(tx || context)`.
-///
-/// The commitment is included in block proposals and later used to verify
-/// [`EvalProof`]s during batch decryption.
-#[derive(Debug)]
-pub struct BatchCommitment<B: PairingBackend> {
-    /// KZG commitment: C = [p(τ)]₁ where τ is the trusted setup secret
-    pub com: B::G1,
-    /// Degree of the committed polynomial (batch_size - 1)
-    pub polynomial_degree: u32,
-}
+use crate::{
+    BatchCommitment, DecryptionContext, EncryptedTransaction, EvalProof, TrustedSetup, TrxError,
+};
 
 impl<B: PairingBackend<Scalar = Fr>> BatchCommitment<B> {
     /// Computes a KZG commitment over the batch polynomial.
@@ -120,51 +106,6 @@ impl<B: PairingBackend<Scalar = Fr>> BatchCommitment<B> {
             com,
             polynomial_degree: polynomial.degree() as u32,
         })
-    }
-}
-
-impl<B: PairingBackend> Clone for BatchCommitment<B>
-where
-    B::G1: Clone,
-{
-    fn clone(&self) -> Self {
-        Self {
-            com: self.com,
-            polynomial_degree: self.polynomial_degree,
-        }
-    }
-}
-
-/// KZG evaluation proof for a single transaction in a batch.
-///
-/// Proves that the batch polynomial `p(x)` evaluates to a specific value at a
-/// specific point, without revealing the entire polynomial. Used to verify that
-/// individual transactions were correctly included in the batch commitment.
-///
-/// For transaction at index `i` in the batch:
-/// - `point = i + 1` (evaluation point, 1-indexed)
-/// - `value = p(i+1) = H(tx_i || context)` (expected polynomial value)
-/// - `proof = [q(τ)]₁` where `q(x) = (p(x) - value) / (x - point)`
-#[derive(Debug)]
-pub struct EvalProof<B: PairingBackend<Scalar = Fr>> {
-    /// Evaluation point (transaction index + 1)
-    pub point: B::Scalar,
-    /// Claimed polynomial value at the point
-    pub value: B::Scalar,
-    /// KZG opening proof: quotient polynomial commitment
-    pub proof: B::G1,
-}
-
-impl<B: PairingBackend<Scalar = Fr>> Clone for EvalProof<B>
-where
-    B::G1: Clone,
-{
-    fn clone(&self) -> Self {
-        Self {
-            point: self.point,
-            value: self.value,
-            proof: self.proof,
-        }
     }
 }
 

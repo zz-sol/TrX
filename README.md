@@ -55,6 +55,7 @@ leader -> combine_and_decrypt (verifies KZG proofs, aggregates shares)
 - `BatchCommitment`: KZG commitment to the batch polynomial.
 - `EvalProof`: KZG opening `(point, value, proof)` for each tx.
 - `PartialDecryption`: Validator share for a single tx.
+- `BatchContext`: Bundle of `{batch, context, commitment, eval_proofs}` for decryption.
 
 ## Core APIs
 ### Setup and DKG
@@ -70,7 +71,7 @@ leader -> combine_and_decrypt (verifies KZG proofs, aggregates shares)
 - `compute_digest(batch, context, setup)` -> `BatchCommitment`
 - `compute_eval_proofs(batch, context, setup)` -> `Vec<EvalProof>`
 - `generate_partial_decryption(share, commitment, context, tx_index, ciphertext)`
-- `combine_and_decrypt(partials, eval_proofs, batch, threshold, setup, commitment, agg_key)`
+- `combine_and_decrypt(partials, batch_ctx, threshold, setup, agg_key)`
 
 ### Validator Signatures (BLS)
 - `sign_validator_vote`
@@ -92,15 +93,14 @@ let commitment = TrxCrypto::<PairingEngine>::compute_digest(&batch, &context, &s
 let eval_proofs = TrxCrypto::<PairingEngine>::compute_eval_proofs(&batch, &context, &setup)?;
 
 // collect partial decryptions and combine
-let results = trx.combine_and_decrypt(
-    partials,
-    &eval_proofs,
-    &batch,
-    threshold as u32,
-    &setup,
-    &commitment,
-    &epoch.public_key.agg_key,
-)?;
+let batch_ctx = BatchContext {
+    batch: &batch,
+    context: &context,
+    commitment: &commitment,
+    eval_proofs: &eval_proofs,
+};
+let results =
+    trx.combine_and_decrypt(partials, batch_ctx, threshold as u32, &setup, &epoch.public_key.agg_key)?;
 ```
 
 ## E2E Toy Flow (Small Chain)
@@ -114,7 +114,7 @@ use std::sync::Arc;
 use ed25519_dalek::SigningKey;
 use rand::thread_rng;
 use trx::{
-    DecryptionContext, EncryptedMempool, PairingEngine, TrxCrypto, ValidatorId,
+    BatchContext, DecryptionContext, EncryptedMempool, PairingEngine, TrxCrypto, ValidatorId,
 };
 
 const NUM_VALIDATORS: usize = 4;
@@ -173,13 +173,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // 6) Combine shares and decrypt
+    let batch_ctx = BatchContext {
+        batch: &batch,
+        context: &context,
+        commitment: &commitment,
+        eval_proofs: &eval_proofs,
+    };
     let results = trx.combine_and_decrypt(
         partials,
-        &eval_proofs,
-        &batch,
+        batch_ctx,
         THRESHOLD as u32,
         &setup,
-        &commitment,
         &epoch.public_key.agg_key,
     )?;
 
@@ -262,13 +266,17 @@ Calls:
 - `combine_and_decrypt`
 
 ``` rust
+let batch_ctx = BatchContext {
+    batch: &batch,
+    context: &context,
+    commitment: &commitment,
+    eval_proofs: &eval_proofs,
+};
 let results = trx.combine_and_decrypt(
     partials,
-    &eval_proofs,
-    &batch,
+    batch_ctx,
     2,
     &setup,
-    &commitment,
     &epoch.public_key.agg_key,
 )?;
 ```
@@ -305,4 +313,3 @@ threshold is met.
 ## Error Handling
 - Most crypto errors map to `TrxError::Backend`.
 - Validation failures return `TrxError::InvalidInput` or `InvalidConfig`.
-

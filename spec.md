@@ -69,6 +69,13 @@ pub struct EvalProof {
     value: Fr,
     proof: G1Element,
 }
+
+pub struct BatchContext<'a> {
+    batch: &'a [EncryptedTransaction],
+    context: &'a DecryptionContext,
+    commitment: &'a BatchCommitment,
+    eval_proofs: &'a [EvalProof],
+}
 ```
 
 ### 2.2 Setup Structures
@@ -147,6 +154,8 @@ pub trait BatchDecryption {
         sk_share: &SecretKeyShare,
         commitment: &BatchCommitment,
         context: &DecryptionContext,
+        tx_index: usize,
+        ciphertext: &Ciphertext,
     ) -> Result<PartialDecryption>;
     
     /// Verify partial decryption
@@ -166,12 +175,11 @@ pub trait BatchDecryption {
     /// Combine shares and decrypt batch
     fn combine_and_decrypt(
         partial_decryptions: Vec<PartialDecryption>,
-        eval_proofs: &[EvalProof],
-        batch: &[EncryptedTransaction],
+        batch_ctx: BatchContext,
         threshold: u32,
         setup: &TrustedSetup,
-        commitment: &BatchCommitment,
-    ) -> Result<Vec<Transaction>>;
+        agg_key: &AggregateKey,
+    ) -> Result<Vec<DecryptionResult>>;
 }
 ```
 

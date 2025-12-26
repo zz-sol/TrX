@@ -1,8 +1,8 @@
 use ed25519_dalek::SigningKey;
 use rand::thread_rng;
-use tess::{PairingEngine, ThresholdEncryption};
+use tess::PairingEngine;
 
-use super::*;
+use trx::*;
 
 #[test]
 fn happy_path_encrypt_decrypt() {
@@ -11,37 +11,55 @@ fn happy_path_encrypt_decrypt() {
     let threshold = 2;
     let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
     let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
-    let keys = trx.scheme.keygen(&mut rng, parties, &trx.params).unwrap();
-    let agg_key = trx
-        .scheme
-        .aggregate_public_key(&keys.public_keys, &trx.params, parties)
+    let setup = trx.generate_trusted_setup(&mut rng, parties, 2).unwrap();
+    let setup = std::sync::Arc::new(setup);
+    let validators: Vec<ValidatorId> = (0..parties as u32).collect();
+    let epoch = trx
+        .run_dkg(&mut rng, &validators, threshold as u32, setup.clone())
         .unwrap();
-    let pk = PublicKey { agg_key };
+
     let encrypted = trx
-        .encrypt_transaction(&pk, b"payload", b"aad", &client_key)
+        .encrypt_transaction(&epoch.public_key, b"payload", b"aad", &client_key)
         .unwrap();
+    let batch = vec![encrypted];
+    let context = DecryptionContext {
+        block_height: 1,
+        context_index: 0,
+    };
+    let commitment = TrxCrypto::<PairingEngine>::compute_digest(&batch, &context, &setup).unwrap();
+    let eval_proofs =
+        TrxCrypto::<PairingEngine>::compute_eval_proofs(&batch, &context, &setup).unwrap();
 
-    let share_count = threshold + 1;
-    let partials: Vec<tess::PartialDecryption<PairingEngine>> = keys
-        .secret_keys
-        .iter()
-        .take(share_count)
-        .map(|sk| {
-            trx.scheme
-                .partial_decrypt(sk, &encrypted.ciphertext)
-                .unwrap()
-        })
-        .collect();
-
-    let mut selector = vec![false; parties];
-    for idx in 0..share_count {
-        selector[idx] = true;
+    let mut partials = Vec::new();
+    for validator_id in [0u32, 1u32, 2u32] {
+        let share = epoch.validator_shares.get(&validator_id).unwrap();
+        let pd = TrxCrypto::<PairingEngine>::generate_partial_decryption(
+            share,
+            &commitment,
+            &context,
+            0,
+            &batch[0].ciphertext,
+        )
+        .unwrap();
+        partials.push(pd);
     }
-    let result = trx
-        .scheme
-        .aggregate_decrypt(&encrypted.ciphertext, &partials, &selector, &pk.agg_key)
+
+    let batch_ctx = BatchContext {
+        batch: &batch,
+        context: &context,
+        commitment: &commitment,
+        eval_proofs: &eval_proofs,
+    };
+    let results = trx
+        .combine_and_decrypt(
+            partials,
+            batch_ctx,
+            threshold as u32,
+            &setup,
+            &epoch.public_key.agg_key,
+        )
         .unwrap();
-    assert_eq!(result.plaintext.unwrap(), b"payload");
+    assert_eq!(results[0].plaintext.as_ref().unwrap(), b"payload");
 }
 
 #[test]
@@ -90,14 +108,18 @@ fn batch_decrypt_flow() {
         }
     }
 
+    let batch_ctx = BatchContext {
+        batch: &batch,
+        context: &context,
+        commitment: &commitment,
+        eval_proofs: &eval_proofs,
+    };
     let results = trx
         .combine_and_decrypt(
             partials,
-            &eval_proofs,
-            &batch,
+            batch_ctx,
             threshold as u32,
             &setup,
-            &commitment,
             &epoch.public_key.agg_key,
         )
         .unwrap();
@@ -215,7 +237,7 @@ fn test_kappa_atomic_single_use() {
 
 #[test]
 fn test_mutex_poisoning_handling() {
-    use crate::PrecomputationEngine;
+    use trx::PrecomputationEngine;
 
     let mut rng = thread_rng();
     let parties = 4;
@@ -280,22 +302,6 @@ fn test_trx_error_display() {
 }
 
 #[test]
-fn test_scalar_from_hash_deterministic() {
-    use crate::utils::scalar_from_hash;
-
-    // Same input should produce same output
-    let input = b"test_input";
-    let scalar1 = scalar_from_hash::<PairingEngine>(input);
-    let scalar2 = scalar_from_hash::<PairingEngine>(input);
-    assert_eq!(scalar1, scalar2);
-
-    // Different input should produce different output
-    let different_input = b"different_input";
-    let scalar3 = scalar_from_hash::<PairingEngine>(different_input);
-    assert_ne!(scalar1, scalar3);
-}
-
-#[test]
 fn test_trusted_setup_validation() {
     let mut rng = thread_rng();
     let parties = 4;
@@ -327,7 +333,7 @@ fn test_trusted_setup_validation() {
 
 #[test]
 fn test_precomputation_cache_isolation() {
-    use crate::PrecomputationEngine;
+    use trx::PrecomputationEngine;
 
     let mut rng = thread_rng();
     let parties = 4;
@@ -491,13 +497,17 @@ fn test_not_enough_shares_error() {
     )
     .unwrap();
 
+    let batch_ctx = BatchContext {
+        batch: &batch,
+        context: &context,
+        commitment: &commitment,
+        eval_proofs: &eval_proofs,
+    };
     let result = trx.combine_and_decrypt(
         vec![pd],
-        &eval_proofs,
-        &batch,
+        batch_ctx,
         threshold as u32,
         &setup_arc,
-        &commitment,
         &epoch.public_key.agg_key,
     );
 

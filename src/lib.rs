@@ -115,15 +115,10 @@
 //!
 //! # Module Organization
 //!
-//! - [`tx_enc`]: Transaction encryption and batch decryption
-//! - [`commitment`]: KZG commitments and evaluation proofs
-//! - [`setup`]: Trusted setup and DKG
-//! - [`signatures`]: Client (Ed25519) and validator (BLS) signatures
-//! - [`pre_computation`]: Precomputation cache for performance
+//! - [`core`]: Protocol types and errors
+//! - [`crypto`]: Tess/KZG/BLS/Ed25519 adapters
 //! - [`mempool`]: Encrypted transaction mempool
-//! - [`transactions`]: Crypto engine and network messages
-//! - [`keys`]: Public key and secret key share wrappers
-//! - [`errors`]: Error types
+//! - [`network`]: Network message types
 //! - [`constants`]: Configuration constants
 //!
 //! # References
@@ -133,28 +128,19 @@
 
 extern crate alloc;
 
-mod commitment;
 mod constants;
-mod errors;
-mod keys;
+mod core;
+mod crypto;
 mod mempool;
-mod pre_computation;
-mod setup;
-mod signatures;
-mod transactions;
-mod tx_enc;
+mod network;
 mod utils;
 
-pub use commitment::*;
 pub use constants::*;
-pub use errors::*;
-pub use keys::*;
+pub use core::errors::*;
+pub use core::types::*;
+pub use crypto::kzg::*;
+pub use crypto::pre_computation::*;
+pub use crypto::signatures::*;
+pub use crypto::trx_crypto::*;
 pub use mempool::*;
-pub use pre_computation::*;
-pub use setup::*;
-pub use signatures::*;
-pub use transactions::*;
-pub use tx_enc::*;
-
-#[cfg(test)]
-mod tests;
+pub use network::messages::*;

@@ -50,12 +50,6 @@ use tracing::instrument;
 
 use crate::{PartialDecryption, TrxError};
 
-/// Client's Ed25519 public verification key.
-pub type TxPublicVerifyKey = ed25519_dalek::VerifyingKey;
-
-/// Client's Ed25519 signature over transaction ciphertext.
-pub type TxSignature = ed25519_dalek::Signature;
-
 /// Validator's BLS secret signing key.
 pub type ValidatorSigningKey = SecretKey;
 

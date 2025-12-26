@@ -50,3 +50,21 @@ pub(crate) fn scalar_from_hash<B: PairingBackend<Scalar = Fr>>(bytes: &[u8]) -> 
         counter = counter.wrapping_add(1);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::scalar_from_hash;
+    use tess::PairingEngine;
+
+    #[test]
+    fn scalar_from_hash_is_deterministic() {
+        let input = b"test_input";
+        let scalar1 = scalar_from_hash::<PairingEngine>(input);
+        let scalar2 = scalar_from_hash::<PairingEngine>(input);
+        assert_eq!(scalar1, scalar2);
+
+        let different_input = b"different_input";
+        let scalar3 = scalar_from_hash::<PairingEngine>(different_input);
+        assert_ne!(scalar1, scalar3);
+    }
+}

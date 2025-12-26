@@ -4,8 +4,8 @@ use ed25519_dalek::SigningKey;
 use rand::thread_rng;
 use tess::PairingEngine;
 use trx::{
-    BatchDecryption, DecryptionContext, EncryptedMempool, SetupManager, TransactionEncryption,
-    TrxCrypto, ValidatorId,
+    BatchContext, BatchDecryption, DecryptionContext, EncryptedMempool, SetupManager,
+    TransactionEncryption, TrxCrypto, ValidatorId,
 };
 
 const NUM_VALIDATORS: usize = 4;
@@ -64,13 +64,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // 6) Combine shares and decrypt
+    let batch_ctx = BatchContext {
+        batch: &batch,
+        context: &context,
+        commitment: &commitment,
+        eval_proofs: &eval_proofs,
+    };
     let results = trx.combine_and_decrypt(
         partials,
-        &eval_proofs,
-        &batch,
+        batch_ctx,
         THRESHOLD as u32,
         &setup,
-        &commitment,
         &epoch.public_key.agg_key,
     )?;
 
