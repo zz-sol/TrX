@@ -94,7 +94,7 @@ pub struct KappaSetup {
 pub struct EpochKeys {
     epoch_id: u64,
     public_key: PublicKey,
-    validator_shares: HashMap<ValidatorId, SecretKeyShare>,
+    // Note: validator shares are stored by validators themselves (silent setup)
     setup: Arc<TrustedSetup>,
 }
 ```
@@ -105,15 +105,21 @@ pub struct EpochKeys {
 ```rust
 pub trait SetupManager {
     /// One-time trusted setup (or distributed ceremony)
-    fn generate_trusted_setup(max_batch_size: usize, max_contexts: usize) 
+    fn generate_trusted_setup(max_batch_size: usize, max_contexts: usize)
         -> Result<TrustedSetup>;
-    
-    /// Per-epoch DKG for threshold keys
-    fn run_dkg(
-        validators: Vec<ValidatorId>,
+
+    /// Silent key generation: each validator independently generates their own key pair
+    fn keygen_single_validator(
+        validator_id: ValidatorId,
+    ) -> Result<ValidatorKeyPair>;
+
+    /// Non-interactive public key aggregation to create epoch keys
+    fn aggregate_epoch_keys(
+        validator_keypairs: Vec<ValidatorKeyPair>,
         threshold: u32,
+        setup: Arc<TrustedSetup>,
     ) -> Result<EpochKeys>;
-    
+
     /// Verify setup integrity
     fn verify_setup(setup: &TrustedSetup) -> Result<()>;
 }

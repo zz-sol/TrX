@@ -16,8 +16,8 @@
 //! ```text
 //! TrX Crypto Layer
 //! ├── Threshold Encryption (Tess)
-//! │   ├── Silent setup protocol
-//! │   ├── DKG for validator shares
+//! │   ├── Silent setup protocol (non-interactive key generation)
+//! │   ├── Non-interactive public key aggregation
 //! │   └── Threshold decryption
 //! ├── KZG Commitments
 //! │   ├── Batch polynomial commitment

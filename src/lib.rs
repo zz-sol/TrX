@@ -25,7 +25,7 @@
 //! ├──────────────────────────────────────────────────────────────┤
 //! │  tx_enc          │ Transaction encryption & batch decryption │
 //! │  commitment      │ KZG commitments & evaluation proofs       │
-//! │  setup           │ Trusted setup & DKG                       │
+//! │  setup           │ Trusted setup & silent key generation    │
 //! │  signatures      │ Ed25519 (client) & BLS (validator) sigs  │
 //! │  pre_computation │ Caching layer for KZG operations          │
 //! │  mempool         │ Encrypted transaction queue               │
@@ -43,7 +43,7 @@
 //! - [`TrxCrypto`]: Main cryptographic engine implementing all protocol traits
 //! - [`TransactionEncryption`]: Client-side encryption interface
 //! - [`BatchDecryption`]: Consensus-layer batch decryption protocol
-//! - [`SetupManager`]: Trusted setup and DKG operations
+//! - [`SetupManager`]: Trusted setup and silent key generation operations
 //!
 //! ## Data Structures
 //!
@@ -76,9 +76,12 @@
 //! // 2. Generate trusted setup
 //! let setup = Arc::new(crypto.generate_trusted_setup(&mut rng, 128, 1000)?);
 //!
-//! // 3. Silent setup: each validator generates their own key
-//! let validators = vec![0, 1, 2, 3, 4];
-//! let validator_keypairs = crypto.keygen_all_validators(&mut rng, &validators)?;
+//! // 3. Silent setup: each validator independently generates their own key
+//! let validators: Vec<u32> = (0..5).collect();
+//! let validator_keypairs: Vec<_> = validators
+//!     .iter()
+//!     .map(|&id| crypto.keygen_single_validator(&mut rng, id))
+//!     .collect::<Result<Vec<_>, _>>()?;
 //! let epoch_keys = crypto.aggregate_epoch_keys(validator_keypairs, 3, setup.clone())?;
 //!
 //! // 4. Client encrypts transaction

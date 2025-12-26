@@ -4,18 +4,27 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE-MIT)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE-APACHE)
 
-A production-ready threshold-encrypted transaction system for blockchain networks, built on [Tess](https://github.com/zz-sol/Tess).
+A production-ready threshold-encrypted transaction system for blockchain networks, built on [{TrX}: Encrypted Mempools in High Performance {BFT} Protocols](https://eprint.iacr.org/2025/2032) and [Threshold Encryption with Silent Setup](https://eprint.iacr.org/2024/263).
 
-> **Implementation Note**: This implementation uses the [Tess](https://github.com/zz-sol/Tess) threshold encryption library for core encryption/decryption operations, rather than implementing the custom witness encryption construction from [the paper](https://eprint.iacr.org/2025/2032).
+## Relationship to two Paper
 
-If you use TrX in your research, please cite the original paper:
+The overall archtecture follows [TrX paper](https://eprint.iacr.org/2025/2032). We replace the witness encryption scheme in TrX with the one in [Tess paper](https://eprint.iacr.org/2024/263) to achieve non-interactive key generation.
+
+If you use this library in your research, please cite the original papers:
 ```bibtex
 @misc{cryptoeprint:2025/2032,
-      author = {Rex Fernando and Guru-Vamsi Policharla and Andrei Tonkikh and Zhuolun Xiang},
-      title = {{TrX}: Encrypted Mempools in High Performance {BFT} Protocols},
-      howpublished = {Cryptology {ePrint} Archive, Paper 2025/2032},
-      year = {2025},
-      url = {https://eprint.iacr.org/2025/2032}
+    author = {Rex Fernando and Guru-Vamsi Policharla and Andrei Tonkikh and Zhuolun Xiang},
+    title = {{TrX}: Encrypted Mempools in High Performance {BFT} Protocols},
+    howpublished = {Cryptology {ePrint} Archive, Paper 2025/2032},
+    year = {2025},
+    url = {https://eprint.iacr.org/2025/2032}
+}
+@misc{garg2024threshold,
+    author = {Sanjam Garg and Guru-Vamsi Policharla and Mingyuan Wang},
+    title = {Threshold Encryption with Silent Setup},
+    howpublished = {Cryptology ePrint Archive, Paper 2024/263},
+    year = {2024},
+    url = {https://eprint.iacr.org/2024/263}
 }
 ```
 
@@ -29,7 +38,7 @@ TrX provides a complete cryptographic infrastructure for confidential transactio
 
 ## End-to-End Workflow
 1. **Setup**: Generate a trusted setup (SRS + kappa contexts).
-2. **Epoch DKG**: Run DKG to produce validator shares and an aggregate public key.
+2. **Silent Setup**: Each validator independently generates their own key pair, then public keys are aggregated non-interactively.
 3. **Client encrypt + sign**: Client encrypts payload and signs
    `hash(ciphertext.payload || associated_data)` with Ed25519.
 4. **Mempool**: Nodes verify the client signature and store encrypted txs.
@@ -80,10 +89,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1) Bootstrapping (operator)
     let trx = TrxCrypto::<PairingEngine>::new(&mut rng, NUM_VALIDATORS, THRESHOLD)?;
     let setup = Arc::new(trx.generate_trusted_setup(&mut rng, MAX_BATCH, MAX_CONTEXTS)?);
-    let validators: Vec<ValidatorId> = (0..NUM_VALIDATORS as u32).collect();
-    let epoch = trx.run_dkg(&mut rng, &validators, THRESHOLD as u32, setup.clone())?;
 
-    // 2) Client encrypts + signs
+    // 2) Silent Setup: Each validator independently generates their key pair (no interaction)
+    let validators: Vec<ValidatorId> = (0..NUM_VALIDATORS as u32).collect();
+    let validator_keypairs = validators
+        .iter()
+        .map(|&validator_id| trx.keygen_single_validator(&mut rng, validator_id))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let validator_secret_shares = validator_keypairs
+        .iter()
+        .map(|kp| kp.secret_share.clone())
+        .collect::<Vec<_>>();
+
+    // Aggregate the public keys non-interactively
+    let epoch = trx.aggregate_epoch_keys(validator_keypairs, THRESHOLD as u32, setup.clone())?;
+
+    // 3) Client encrypts + signs
     let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
     let tx = trx.encrypt_transaction(
         &epoch.public_key,
@@ -109,10 +131,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut partials = Vec::new();
     for (tx_index, tx) in batch.iter().enumerate() {
         for validator_id in 0..(THRESHOLD + 1) {
-            let share = epoch
-                .validator_shares
-                .get(&(validator_id as u32))
-                .expect("share exists");
+            let share = &validator_secret_shares[validator_id];
             let pd = TrxCrypto::<PairingEngine>::generate_partial_decryption(
                 share,
                 &commitment,
@@ -179,7 +198,8 @@ let eval_proofs = TrxCrypto::<PairingEngine>::compute_eval_proofs(&batch, &conte
 
 ### Validator: Generate Decryption Share
 ```rust
-let share = epoch.validator_shares.get(&validator_id).unwrap();
+// Each validator uses their own secret share (generated during silent setup)
+let share = &my_secret_share;
 let pd = TrxCrypto::<PairingEngine>::generate_partial_decryption(
     share,
     &commitment,
@@ -255,12 +275,13 @@ leader    -> combine_and_decrypt (verifies KZG proofs, aggregates shares)
 
 All core functionality is implemented in [src/crypto/trx_crypto.rs](src/crypto/trx_crypto.rs).
 
-### Setup and DKG
+### Setup and Silent Key Generation
 | Function | Description |
 |----------|-------------|
 | `TrxCrypto::new(rng, parties, threshold)` | Initialize the cryptographic system |
 | `generate_trusted_setup(rng, max_batch_size, max_contexts)` | Generate SRS and kappa contexts |
-| `run_dkg(rng, validators, threshold, setup)` | Execute distributed key generation |
+| `keygen_single_validator(rng, validator_id)` | Each validator independently generates their own key pair (silent setup) |
+| `aggregate_epoch_keys(keypairs, threshold, setup)` | Non-interactively aggregate validator public keys into epoch keys |
 
 ### Client Operations
 | Function | Description |
