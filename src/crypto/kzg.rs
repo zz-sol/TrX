@@ -35,8 +35,10 @@
 //! # let mut rng = rand::thread_rng();
 //! # let crypto = TrxCrypto::<tess::PairingEngine>::new(&mut rng, 5, 3)?;
 //! # let setup_arc = Arc::new(crypto.generate_trusted_setup(&mut rng, 128, 1000)?);
-//! # let validators = vec![0, 1, 2, 3, 4];
-//! # let validator_keypairs = crypto.keygen_all_validators(&mut rng, &validators)?;
+//! # let validators: Vec<u32> = (0..5).collect();
+//! # let validator_keypairs: Vec<_> = validators.iter()
+//! #     .map(|&id| crypto.keygen_single_validator(&mut rng, id))
+//! #     .collect::<Result<Vec<_>, _>>()?;
 //! # let epoch_keys = crypto.aggregate_epoch_keys(validator_keypairs, 3, setup_arc.clone())?;
 //! # let batch = vec![]; // encrypted transactions
 //! let context = DecryptionContext { block_height: 1, context_index: 0 };

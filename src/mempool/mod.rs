@@ -20,8 +20,10 @@
 //! # let crypto = TrxCrypto::<tess::PairingEngine>::new(&mut rng, 5, 3)?;
 //! # let signing_key = SigningKey::generate(&mut rng);
 //! # let setup = std::sync::Arc::new(crypto.generate_trusted_setup(&mut rng, 128, 1000)?);
-//! # let validators = vec![0, 1, 2, 3, 4];
-//! # let validator_keypairs = crypto.keygen_all_validators(&mut rng, &validators)?;
+//! # let validators: Vec<u32> = (0..5).collect();
+//! # let validator_keypairs: Vec<_> = validators.iter()
+//! #     .map(|&id| crypto.keygen_single_validator(&mut rng, id))
+//! #     .collect::<Result<Vec<_>, _>>()?;
 //! # let epoch_keys = crypto.aggregate_epoch_keys(validator_keypairs, 3, setup)?;
 //! # let encrypted_tx = crypto.encrypt_transaction(&epoch_keys.public_key, b"data", b"metadata", &signing_key)?;
 //! // Create mempool with max 1000 transactions

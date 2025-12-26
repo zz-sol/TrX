@@ -146,7 +146,7 @@ impl<B: PairingBackend<Scalar = Fr>> TrxCrypto<B> {
 
         let secret_share = SecretKeyShare {
             share: secret_key.scalar,
-            validator_id: validator_id,
+            validator_id,
         };
 
         Ok(ValidatorKeyPair {
