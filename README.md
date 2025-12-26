@@ -1,12 +1,14 @@
-# TrX2
+# TrX
 
-Threshold-encrypted transaction flow for blockchain networks, built on Tess.
+A production-ready threshold-encrypted transaction system for blockchain networks, built on [Tess](https://github.com/zz-sol/Tess).
 
-This crate wires:
-- Tess threshold encryption (silent setup)
-- KZG batch commitments and openings
-- Client Ed25519 transaction signatures
-- Validator BLS signature helpers
+## Overview
+
+TrX provides a complete cryptographic infrastructure for confidential transaction processing with threshold decryption. It combines:
+- **Tess threshold encryption** with silent setup
+- **KZG batch commitments** and openings for efficient proof generation
+- **Ed25519 signatures** for client transaction authentication
+- **BLS signatures** for validator coordination
 
 ## End-to-End Workflow
 1. **Setup**: Generate a trusted setup (SRS + kappa contexts).
@@ -20,20 +22,14 @@ This crate wires:
 7. **Combine + decrypt**: Verify KZG eval proofs against the batch commitment,
    then combine shares once the threshold is met.
 
-## Architecture Map
-```
-client -> encrypt + sign (Ed25519)
-node   -> verify_ciphertext -> mempool
-node   -> batch -> compute_digest + compute_eval_proofs (KZG)
-validator -> generate_partial_decryption
-leader -> combine_and_decrypt (verifies KZG proofs, aggregates shares)
-```
+## Architecture
 
+### System Layers
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  Client Layer                                           │
 │  • Encrypt transactions with Ed25519 signatures         │
-│  • Submit to network via SubmitEncryptedTx              │
+│  • Submit to network                                    │
 └─────────────────────────────────────────────────────────┘
                            ↓
 ┌─────────────────────────────────────────────────────────┐
@@ -50,65 +46,97 @@ leader -> combine_and_decrypt (verifies KZG proofs, aggregates shares)
 └─────────────────────────────────────────────────────────┘
 ```
 
+### Component Flow
+```
+client    -> encrypt_transaction + sign (Ed25519)
+node      -> verify_ciphertext -> mempool
+proposer  -> compute_digest + compute_eval_proofs (KZG)
+validator -> generate_partial_decryption
+leader    -> combine_and_decrypt (verifies KZG proofs, aggregates shares)
+```
+
 ## Key Types
-- `EncryptedTransaction`: Tess ciphertext + associated data + Ed25519 signature.
-- `BatchCommitment`: KZG commitment to the batch polynomial.
-- `EvalProof`: KZG opening `(point, value, proof)` for each tx.
-- `PartialDecryption`: Validator share for a single tx.
-- `BatchContext`: Bundle of `{batch, context, commitment, eval_proofs}` for decryption.
+
+| Type | Description | Location |
+|------|-------------|----------|
+| `EncryptedTransaction` | Tess ciphertext + associated data + Ed25519 signature | [src/core/types.rs](src/core/types.rs) |
+| `BatchCommitment` | KZG commitment to the batch polynomial | [src/crypto/kzg.rs](src/crypto/kzg.rs) |
+| `EvalProof` | KZG opening `(point, value, proof)` for each tx | [src/crypto/kzg.rs](src/crypto/kzg.rs) |
+| `PartialDecryption` | Validator share for a single tx | [src/core/types.rs](src/core/types.rs) |
+| `BatchContext` | Bundle of `{batch, context, commitment, eval_proofs}` for decryption | [src/core/types.rs](src/core/types.rs) |
 
 ## Core APIs
-### Setup and DKG
-- `TrxCrypto::new(rng, parties, threshold)`
-- `generate_trusted_setup(rng, max_batch_size, max_contexts)`
-- `run_dkg(rng, validators, threshold, setup)`
 
-### Client Encryption
-- `encrypt_transaction(ek, payload, associated_data, signing_key)`
-- `verify_ciphertext(tx)`
+All core functionality is implemented in [src/crypto/trx_crypto.rs](src/crypto/trx_crypto.rs).
+
+### Setup and DKG
+| Function | Description |
+|----------|-------------|
+| `TrxCrypto::new(rng, parties, threshold)` | Initialize the cryptographic system |
+| `generate_trusted_setup(rng, max_batch_size, max_contexts)` | Generate SRS and kappa contexts |
+| `run_dkg(rng, validators, threshold, setup)` | Execute distributed key generation |
+
+### Client Operations
+| Function | Description |
+|----------|-------------|
+| `encrypt_transaction(ek, payload, associated_data, signing_key)` | Encrypt and sign a transaction |
+| `verify_ciphertext(tx)` | Verify transaction signature and structure |
 
 ### Batch Operations
-- `compute_digest(batch, context, setup)` -> `BatchCommitment`
-- `compute_eval_proofs(batch, context, setup)` -> `Vec<EvalProof>`
-- `generate_partial_decryption(share, commitment, context, tx_index, ciphertext)`
-- `combine_and_decrypt(partials, batch_ctx, threshold, setup, agg_key)`
+| Function | Return Type | Description |
+|----------|-------------|-------------|
+| `compute_digest(batch, context, setup)` | `BatchCommitment` | KZG commit to batch polynomial |
+| `compute_eval_proofs(batch, context, setup)` | `Vec<EvalProof>` | Generate per-tx KZG openings |
+| `generate_partial_decryption(share, commitment, context, tx_index, ciphertext)` | `PartialDecryption` | Validator creates decryption share |
+| `combine_and_decrypt(partials, batch_ctx, threshold, setup, agg_key)` | `Vec<DecryptionResult>` | Verify proofs and combine shares |
 
 ### Validator Signatures (BLS)
-- `sign_validator_vote`
-- `verify_validator_vote`
-- `sign_validator_share`
-- `verify_validator_share`
+Implemented in [src/crypto/signatures.rs](src/crypto/signatures.rs):
+- `sign_validator_vote` / `verify_validator_vote`
+- `sign_validator_share` / `verify_validator_share`
 
-## Usage Example
-``` rust
+## Quick Start
+
+Add TrX to your `Cargo.toml`:
+```toml
+[dependencies]
+trx = { git = "https://github.com/yourusername/TrX" }
+```
+
+### Basic Usage
+```rust
+use trx::{TrxCrypto, PairingEngine, DecryptionContext, BatchContext};
+use std::sync::Arc;
+
+// 1. Initialize system
 let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold)?;
-let setup = trx.generate_trusted_setup(&mut rng, max_batch, max_contexts)?;
-let setup = Arc::new(setup);
+let setup = Arc::new(trx.generate_trusted_setup(&mut rng, max_batch, max_contexts)?);
 let epoch = trx.run_dkg(&mut rng, &validators, threshold as u32, setup.clone())?;
 
+// 2. Client encrypts transaction
 let encrypted = trx.encrypt_transaction(&epoch.public_key, payload, aad, &client_key)?;
+
+// 3. Batch and commit
 let batch = vec![encrypted];
 let context = DecryptionContext { block_height: 1, context_index: 0 };
 let commitment = TrxCrypto::<PairingEngine>::compute_digest(&batch, &context, &setup)?;
 let eval_proofs = TrxCrypto::<PairingEngine>::compute_eval_proofs(&batch, &context, &setup)?;
 
-// collect partial decryptions and combine
-let batch_ctx = BatchContext {
-    batch: &batch,
-    context: &context,
-    commitment: &commitment,
-    eval_proofs: &eval_proofs,
-};
-let results =
-    trx.combine_and_decrypt(partials, batch_ctx, threshold as u32, &setup, &epoch.public_key.agg_key)?;
+// 4. Validators create partial decryptions (collect from threshold validators)
+// ... partials collected from validators ...
+
+// 5. Combine and decrypt
+let batch_ctx = BatchContext { batch: &batch, context: &context, commitment: &commitment, eval_proofs: &eval_proofs };
+let results = trx.combine_and_decrypt(partials, batch_ctx, threshold as u32, &setup, &epoch.public_key.agg_key)?;
 ```
 
-## E2E Toy Flow (Small Chain)
-Assume a chain with 4 validators (V0..V3), threshold=2 (need 3 shares). One
-user submits a confidential transaction.
+See [examples/toy_example.rs](examples/toy_example.rs) for a complete working example.
 
-### Example (Single File)
-``` rust
+## Complete Example: Small Chain
+
+This example demonstrates a complete flow with 4 validators (threshold=2, requiring 3 shares) and one confidential transaction.
+
+```rust
 use std::sync::Arc;
 
 use ed25519_dalek::SigningKey;
@@ -196,15 +224,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Each validator stores its `SecretKeyShare` from `epoch.validator_shares`.
+## Detailed Workflow by Role
 
-### 2) Client submits an encrypted tx
-Who: user / wallet  
-Calls:
-- `encrypt_transaction`
-- (optional) `verify_ciphertext` locally
-
-``` rust
+### Client: Submit Encrypted Transaction
+```rust
 let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
 let tx = trx.encrypt_transaction(
     &epoch.public_key,
@@ -212,44 +235,26 @@ let tx = trx.encrypt_transaction(
     b"nonce:123",
     &client_key,
 )?;
+// Send tx to mempool
 ```
 
-The client sends `tx` to a node (mempool).
-
-### 3) Mempool admission
-Who: validator node  
-Calls:
-- `verify_ciphertext`
-- `EncryptedMempool::add_encrypted_tx`
-
-``` rust
+### Node: Mempool Admission
+```rust
 TrxCrypto::<PairingEngine>::verify_ciphertext(&tx)?;
 mempool.add_encrypted_tx(tx)?;
 ```
 
-### 4) Block proposal and batch precompute
-Who: block proposer  
-Calls:
-- `get_batch`
-- `compute_digest`
-- `compute_eval_proofs`
-
-``` rust
+### Block Proposer: Create Batch
+```rust
 let batch = mempool.get_batch(32);
 let context = DecryptionContext { block_height: 100, context_index: 0 };
 let commitment = TrxCrypto::<PairingEngine>::compute_digest(&batch, &context, &setup)?;
 let eval_proofs = TrxCrypto::<PairingEngine>::compute_eval_proofs(&batch, &context, &setup)?;
+// Broadcast commitment and eval_proofs with the proposal
 ```
 
-These values are included in the proposal or broadcast alongside it.
-
-### 5) Validators produce decryption shares
-Who: each validator  
-Calls:
-- `generate_partial_decryption`
-- (optional) `sign_validator_share`
-
-``` rust
+### Validator: Generate Decryption Share
+```rust
 let share = epoch.validator_shares.get(&validator_id).unwrap();
 let pd = TrxCrypto::<PairingEngine>::generate_partial_decryption(
     share,
@@ -258,14 +263,11 @@ let pd = TrxCrypto::<PairingEngine>::generate_partial_decryption(
     tx_index,
     &batch[tx_index].ciphertext,
 )?;
+// Optionally sign with: sign_validator_share(&pd, &bls_key)
 ```
 
-### 6) Leader combines shares and decrypts
-Who: leader / aggregator  
-Calls:
-- `combine_and_decrypt`
-
-``` rust
+### Leader: Combine and Decrypt
+```rust
 let batch_ctx = BatchContext {
     batch: &batch,
     context: &context,
@@ -275,41 +277,105 @@ let batch_ctx = BatchContext {
 let results = trx.combine_and_decrypt(
     partials,
     batch_ctx,
-    2,
+    threshold as u32,
     &setup,
     &epoch.public_key.agg_key,
 )?;
+// results[i].plaintext contains the decrypted payload
 ```
 
-`results[i].plaintext` now holds the decrypted payload for tx `i` once the
-threshold is met.
+## Technical Details
 
-## Batch Commitment Details
-- The batch polynomial is built from per-tx scalar commitments derived from
-  `hash(context || ciphertext.payload || associated_data)`.
-- KZG commit is computed against the trusted SRS in `TrustedSetup`.
-- Eval proofs are KZG openings at points `x = 1..batch_len`.
+### Batch Commitment & KZG Proofs
+- **Polynomial construction**: Per-tx scalars derived from `hash(context || ciphertext.payload || associated_data)`
+- **KZG commitment**: Computed against the trusted SRS in `TrustedSetup`
+- **Eval proofs**: KZG openings at evaluation points `x = 1..batch_len`
 
-## Decryption Share Validation
-- `combine_and_decrypt` validates:
-  - context consistency across shares
-  - eval proofs match the provided `BatchCommitment`
-  - eval proofs open at expected points
-  - threshold is met before aggregation
+### Security Properties
+The `combine_and_decrypt` function validates:
+- ✓ Context consistency across all decryption shares
+- ✓ Eval proofs match the provided `BatchCommitment`
+- ✓ Eval proofs open at expected points
+- ✓ Threshold requirement met before aggregation
 
-## Signatures
-- **Client txs**: Ed25519. Verified in `verify_ciphertext`.
-- **Validator votes/shares**: BLS helpers in `signatures.rs`; consensus layer
-  decides how and when to enforce them.
+### Signature Schemes
+| Component | Scheme | Location | Purpose |
+|-----------|--------|----------|---------|
+| Client transactions | Ed25519 | [verify_ciphertext](src/crypto/trx_crypto.rs) | Transaction authenticity |
+| Validator votes/shares | BLS | [signatures.rs](src/crypto/signatures.rs) | Consensus coordination |
 
-## Dependencies
-- `tess` via local path `../Tess` (must include KZG opening support).
+## Configuration
 
-## Configuration Notes
-- `threshold` must be `< parties` and parties should be a power of two (Tess).
-- Batch size must fit the SRS: `batch.len() + 1 <= setup.srs.powers_of_g.len()`.
-- Ed25519 signatures use a 32-byte hash of payload + associated data.
+### System Requirements
+- `threshold < parties` (typically `parties` is a power of two for Tess)
+- Batch size constraint: `batch.len() + 1 <= setup.srs.powers_of_g.len()`
+- Ed25519 signatures use 32-byte Blake3 hash
+
+### Dependencies
+```toml
+tess = { git = "https://github.com/zz-sol/Tess", features = ["blst"] }
+solana-bls-signatures = { git = "https://github.com/anza-xyz/solana-sdk", ... }
+ed25519-dalek = "2.1"
+blake3 = "1"
+```
 
 ## Error Handling
-- Most crypto errors map to `TrxError::Backend`.
-- Validation failures return `TrxError::InvalidInput` or `InvalidConfig`.
+| Error Type | Description |
+|------------|-------------|
+| `TrxError::Backend` | Cryptographic operation failures |
+| `TrxError::InvalidInput` | Validation failures (bad signatures, malformed data) |
+| `TrxError::InvalidConfig` | Configuration constraint violations |
+
+See [src/core/errors.rs](src/core/errors.rs) for complete error definitions.
+
+## Testing
+
+Run the test suite:
+```bash
+cargo test
+```
+
+Run the complete flow test:
+```bash
+cargo test --test flow
+```
+
+Run the example:
+```bash
+cargo run --example toy_example
+```
+
+## Project Structure
+
+```
+src/
+├── core/           # Core types and error definitions
+├── crypto/         # Cryptographic operations
+│   ├── trx_crypto.rs    # Main TrxCrypto implementation
+│   ├── kzg.rs           # KZG commitments and proofs
+│   ├── signatures.rs    # BLS validator signatures
+│   └── pre_computation.rs
+├── mempool/        # Transaction mempool
+└── network/        # Network message types
+
+examples/
+└── toy_example.rs  # Complete working example
+
+tests/
+└── flow.rs         # End-to-end integration tests
+```
+
+## License
+
+Licensed under either of:
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+
+at your option.
+
+## References
+
+- [TrX: Encrypted Mempools in High Performance BFT Protocols](https://eprint.iacr.org/2025/2032)
+- [ePrint Archive Paper: Threshold Encryption with Silent Setup](https://eprint.iacr.org/2024/263)
+- [Tess implementation](https://github.com/zz-sol/Tess)
+

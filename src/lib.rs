@@ -1,6 +1,6 @@
-//! TrX2: Threshold Encryption Protocol for MEV Protection
+//! TrX: Threshold Encryption Protocol for MEV Protection
 //!
-//! TrX2 is a complete Rust implementation of a threshold encryption system designed
+//! TrX is a complete Rust implementation of a threshold encryption system designed
 //! for protecting blockchain transactions from MEV (Maximal Extractable Value) attacks.
 //! Built on top of the [Tess](https://github.com/tess-threshold-encryption/tess) threshold
 //! encryption library, it provides encrypted transaction processing with batch decryption.

@@ -5,18 +5,18 @@
 ### 1.1 Core Components
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                     Application Layer                     │
+│                     Application Layer                   │
 ├─────────────────────────────────────────────────────────┤
-│                    Consensus Protocol                     │
-│                    (with TrX hooks)                       │
+│                    Consensus Protocol                   │
+│                    (with TrX hooks)                     │
 ├─────────────────────────────────────────────────────────┤
-│                  TrX Encryption Layer                     │
-│  ┌──────────┐  ┌──────────┐  ┌────────────────────┐    │
-│  │  Setup   │  │  Batch   │  │   Precomputation   │    │
-│  │  Manager │  │  Crypto  │  │      Engine        │    │
-│  └──────────┘  └──────────┘  └────────────────────┘    │
+│                  TrX Encryption Layer                   │
+│  ┌──────────┐  ┌──────────┐  ┌────────────────────┐     │
+│  │  Setup   │  │  Batch   │  │   Precomputation   │     │
+│  │  Manager │  │  Crypto  │  │      Engine        │     │
+│  └──────────┘  └──────────┘  └────────────────────┘     │
 ├─────────────────────────────────────────────────────────┤
-│                   Encrypted Mempool                       │
+│                   Encrypted Mempool                     │
 └─────────────────────────────────────────────────────────┘
 ```
 

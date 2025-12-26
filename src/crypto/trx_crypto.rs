@@ -78,7 +78,6 @@ impl<B: PairingBackend<Scalar = Fr>> TrxCrypto<B> {
 ///
 /// Contains the cryptographic parameters needed for the entire system:
 /// - SRS for KZG polynomial commitments
-/// - Powers of tau in both G1 and G2 for various operations
 /// - Kappa contexts for randomness binding in batch decryption
 #[derive(Debug)]
 pub struct TrustedSetup<B: PairingBackend<Scalar = Fr>> {
@@ -211,10 +210,7 @@ impl<B: PairingBackend<Scalar = Fr>> SetupManager<B> for TrxCrypto<B> {
             });
         }
 
-        Ok(TrustedSetup {
-            srs,
-            kappa_setups,
-        })
+        Ok(TrustedSetup { srs, kappa_setups })
     }
 
     #[instrument(

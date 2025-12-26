@@ -1,6 +1,6 @@
 use ed25519_dalek::SigningKey;
 use rand::thread_rng;
-use tess::PairingEngine;
+use tess::{CurvePoint, PairingEngine};
 
 use trx::*;
 
@@ -376,6 +376,45 @@ fn test_precomputation_cache_isolation() {
         data1.digest.polynomial_degree,
         data3.digest.polynomial_degree
     ); // Same result
+}
+
+#[test]
+fn test_precomputation_cache_key_includes_associated_data() {
+    let mut rng = thread_rng();
+    let parties = 4;
+    let threshold = 2;
+    let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
+    let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
+
+    let setup = trx.generate_trusted_setup(&mut rng, parties, 5).unwrap();
+    let setup_arc = std::sync::Arc::new(setup);
+    let validators: Vec<ValidatorId> = (0..parties as u32).collect();
+    let epoch = trx
+        .run_dkg(&mut rng, &validators, threshold as u32, setup_arc.clone())
+        .unwrap();
+
+    let context = DecryptionContext {
+        block_height: 1,
+        context_index: 0,
+    };
+
+    let tx1 = trx
+        .encrypt_transaction(&epoch.public_key, b"payload", b"aad-1", &client_key)
+        .unwrap();
+    let tx2 = trx
+        .encrypt_transaction(&epoch.public_key, b"payload", b"aad-2", &client_key)
+        .unwrap();
+
+    let batch1 = vec![tx1];
+    let batch2 = vec![tx2];
+
+    let engine = PrecomputationEngine::<PairingEngine>::new();
+    let data1 = engine.precompute(&batch1, &context, &setup_arc).unwrap();
+    let data2 = engine.precompute(&batch2, &context, &setup_arc).unwrap();
+
+    let com1 = data1.digest.com.to_repr();
+    let com2 = data2.digest.com.to_repr();
+    assert_ne!(com1, com2);
 }
 
 #[test]
