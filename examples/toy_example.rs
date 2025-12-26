@@ -1,7 +1,7 @@
 //! # TrX Complete Example: Threshold-Encrypted Transaction Flow
 //!
 //! This example demonstrates the full lifecycle of a confidential transaction in TrX:
-//! 1. Trusted setup and validator DKG
+//! 1. Trusted setup and validator silent setup (no interaction required)
 //! 2. Client transaction encryption with Ed25519 signature
 //! 3. Mempool validation and queueing
 //! 4. Batch commitment with KZG proofs
@@ -18,7 +18,7 @@
 use std::sync::Arc;
 
 use ed25519_dalek::SigningKey;
-use rand::thread_rng;
+use rand::{rngs::StdRng, thread_rng, SeedableRng};
 use tess::PairingEngine;
 use tracing_subscriber::fmt;
 use trx::{
@@ -70,12 +70,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         MAX_BATCH, MAX_CONTEXTS
     );
 
-    // Run distributed key generation to create validator shares and aggregate public key
+    // Phase 1: Each validator independently generates their key pair (silent setup - no interaction)
     let validators: Vec<ValidatorId> = (0..NUM_VALIDATORS as u32).collect();
-    let epoch = trx.run_dkg(&mut rng, &validators, THRESHOLD as u32, setup.clone())?;
+    let rngs = (0..NUM_VALIDATORS)
+        .map(|_| StdRng::from_rng(&mut rng).unwrap())
+        .collect::<Vec<_>>();
+
+    let validator_keypairs = validators
+        .iter()
+        .zip(rngs.into_iter())
+        .map(|(&validator_id, mut rng)| trx.keygen_single_validator(&mut rng, validator_id))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let validator_secret_shares = validator_keypairs
+        .iter()
+        .map(|kp| kp.secret_share.clone())
+        .collect::<Vec<_>>();
+
     println!(
-        "  ✓ Completed DKG for epoch - {} validator shares generated\n",
-        epoch.validator_shares.len()
+        "  ✓ Generated {} validator key pairs (silent setup - no interaction)",
+        validator_keypairs.len()
+    );
+
+    // Phase 2: Aggregate the published public keys (non-interactive)
+    let epoch = trx.aggregate_epoch_keys(validator_keypairs, THRESHOLD as u32, setup.clone())?;
+    println!(
+        "  ✓ Aggregated epoch keys - {} validator shares registered\n",
+        validator_secret_shares.len()
     );
 
     // ========================================================================
@@ -146,10 +167,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (tx_index, tx) in batch.iter().enumerate() {
         // Collect shares from THRESHOLD + 1 validators (minimum required)
         for validator_id in 0..(THRESHOLD + 1) {
-            let share = epoch
-                .validator_shares
-                .get(&(validator_id as u32))
-                .expect("share exists");
+            let share = &validator_secret_shares[validator_id];
 
             // Each validator generates a partial decryption for this transaction
             let pd = TrxCrypto::<PairingEngine>::generate_partial_decryption(

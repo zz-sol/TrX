@@ -72,6 +72,89 @@ impl<B: PairingBackend<Scalar = Fr>> TrxCrypto<B> {
             threshold,
         })
     }
+
+    /// Helper method to generate all validator keypairs at once.
+    ///
+    /// This is useful for testing and simulates the silent setup where each validator
+    /// would independently generate their own keys then publish their public keys.
+    #[instrument(level = "info", skip_all, fields(num_validators = validator_ids.len()))]
+    pub fn unsafe_keygen_all_validators(
+        &self,
+        rng: &mut impl RngCore,
+        validator_ids: &[ValidatorId],
+    ) -> Result<Vec<ValidatorKeyPair<B>>, TrxError> {
+        if validator_ids.len() != self.parties {
+            return Err(TrxError::InvalidConfig(format!(
+                "validator count {} must match parties {}",
+                validator_ids.len(),
+                self.parties
+            )));
+        }
+
+        // Generate all keys at once (in reality, each validator would do this independently)
+        let keys = self
+            .tess_scheme
+            .keygen_unsafe(rng, self.parties, &self.params)?;
+
+        let mut validator_keypairs = Vec::with_capacity(self.parties);
+        for (index, validator_id) in validator_ids.iter().enumerate() {
+            validator_keypairs.push(ValidatorKeyPair {
+                validator_id: *validator_id,
+                public_key: keys.public_keys[index].clone(),
+                secret_share: SecretKeyShare {
+                    share: keys.secret_keys[index].scalar,
+                    validator_id: *validator_id,
+                },
+            });
+        }
+
+        Ok(validator_keypairs)
+    }
+
+    /// Generates a key pair for a single validator (silent setup - no interaction).
+    ///
+    /// Each validator calls this independently to create their own keys using only
+    /// their validator ID and an RNG. No coordination with other validators required!
+    ///
+    /// # Arguments
+    ///
+    /// * `rng` - Cryptographically secure random number generator
+    /// * `validator_id` - This validator's unique ID (must be in range [0, parties))
+    ///
+    /// # Returns
+    ///
+    /// A `ValidatorKeyPair` containing both the public key (to be published) and
+    /// secret share (to be kept private).
+    #[instrument(level = "trace", skip_all, fields(validator_id))]
+    pub fn keygen_single_validator(
+        &self,
+        rng: &mut impl RngCore,
+        validator_id: ValidatorId,
+    ) -> Result<ValidatorKeyPair<B>, TrxError> {
+        // True silent setup: each validator independently generates their own key pair
+        // using Tess's keygen_single_validator API. No coordination required!
+        //
+        // Each validator:
+        //   1. Samples their own random BLS secret key
+        //   2. Derives public key using precomputed Lagrange commitments
+        //   3. Publishes their public key
+        //
+        // The coordinator later aggregates all published public keys deterministically.
+        let (secret_key, public_key) =
+            self.tess_scheme
+                .keygen_single_validator(rng, validator_id as usize, &self.params)?;
+
+        let secret_share = SecretKeyShare {
+            share: secret_key.scalar,
+            validator_id: validator_id,
+        };
+
+        Ok(ValidatorKeyPair {
+            validator_id,
+            public_key,
+            secret_share,
+        })
+    }
 }
 
 /// Trusted setup for KZG commitments and threshold encryption.
@@ -152,10 +235,19 @@ pub struct EpochKeys<B: PairingBackend<Scalar = Fr>> {
     pub epoch_id: u64,
     /// Aggregate threshold public key for encryption
     pub public_key: PublicKey<B>,
-    /// Map from validator ID to their secret key share
-    pub validator_shares: HashMap<ValidatorId, SecretKeyShare<B>>,
     /// Shared reference to the trusted setup
     pub setup: Arc<TrustedSetup<B>>,
+}
+
+/// Individual validator's key pair for threshold encryption.
+#[derive(Clone, Debug)]
+pub struct ValidatorKeyPair<B: PairingBackend<Scalar = Fr>> {
+    /// Validator's unique ID
+    pub validator_id: ValidatorId,
+    /// Public key (can be shared publicly)
+    pub public_key: tess::PublicKey<B>,
+    /// Secret key share (kept private)
+    pub secret_share: SecretKeyShare<B>,
 }
 
 /// Setup and key generation interface for TrX.
@@ -168,11 +260,11 @@ pub trait SetupManager<B: PairingBackend<Scalar = Fr>> {
         max_contexts: usize,
     ) -> Result<TrustedSetup<B>, TrxError>;
 
-    /// Runs distributed key generation for a new epoch.
-    fn run_dkg(
+    /// Aggregates public keys from all validators to create epoch keys.
+    /// This is the "DKG" step but it's non-interactive - just aggregation of published keys.
+    fn aggregate_epoch_keys(
         &self,
-        rng: &mut impl RngCore,
-        validators: &[ValidatorId],
+        validator_keypairs: Vec<ValidatorKeyPair<B>>,
         threshold: u32,
         setup: Arc<TrustedSetup<B>>,
     ) -> Result<EpochKeys<B>, TrxError>;
@@ -218,53 +310,50 @@ impl<B: PairingBackend<Scalar = Fr>> SetupManager<B> for TrxCrypto<B> {
     #[instrument(
         level = "info",
         skip_all,
-        fields(num_validators = validators.len(), threshold)
+        fields(num_validators = validator_keypairs.len(), threshold)
     )]
-    fn run_dkg(
+    fn aggregate_epoch_keys(
         &self,
-        rng: &mut impl RngCore,
-        validators: &[ValidatorId],
+        validator_keypairs: Vec<ValidatorKeyPair<B>>,
         threshold: u32,
         setup: Arc<TrustedSetup<B>>,
     ) -> Result<EpochKeys<B>, TrxError> {
-        let parties = validators.len();
+        let parties = validator_keypairs.len();
         if parties == 0 {
             return Err(TrxError::InvalidConfig("validators cannot be empty".into()));
         }
         if parties != self.parties {
-            return Err(TrxError::InvalidConfig(
-                "validators length must match parties".into(),
-            ));
+            return Err(TrxError::InvalidConfig(format!(
+                "validator count {} must match parties {}",
+                parties, self.parties
+            )));
         }
         if threshold as usize != self.threshold {
-            return Err(TrxError::InvalidConfig(
-                "threshold must match crypto configuration".into(),
-            ));
+            return Err(TrxError::InvalidConfig(format!(
+                "threshold {} must match crypto configuration {}",
+                threshold, self.threshold
+            )));
         }
 
-        let keys = self.tess_scheme.keygen(rng, parties, &self.params)?;
-        let agg_key =
-            self.tess_scheme
-                .aggregate_public_key(&keys.public_keys, &self.params, parties)?;
-
+        // Extract public keys and build validator shares map
+        let mut public_keys = Vec::with_capacity(parties);
         let mut validator_shares = HashMap::new();
-        for (idx, sk) in keys.secret_keys.iter().enumerate() {
-            let id = validators
-                .get(idx)
-                .ok_or_else(|| TrxError::InvalidInput("validator index mismatch".into()))?;
-            validator_shares.insert(
-                *id,
-                SecretKeyShare {
-                    share: sk.scalar,
-                    index: idx as u32,
-                },
-            );
+
+        for keypair in validator_keypairs {
+            public_keys.push(keypair.public_key);
+            validator_shares.insert(keypair.validator_id, keypair.secret_share);
         }
+
+        // Aggregate the public keys deterministically
+        // This is the non-interactive "DKG" - just aggregation of published public keys
+        let agg_key = self
+            .tess_scheme
+            .aggregate_public_key(&public_keys, &self.params, parties)?;
 
         Ok(EpochKeys {
             epoch_id: 0,
             public_key: PublicKey { agg_key },
-            validator_shares,
+            // validator_shares,
             setup,
         })
     }
@@ -432,7 +521,7 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
     #[instrument(
         level = "trace",
         skip_all,
-        fields(tx_index, validator_id = sk_share.index)
+        fields(tx_index, validator_id = sk_share.validator_id)
     )]
     fn generate_partial_decryption(
         sk_share: &SecretKeyShare<B>,
@@ -444,7 +533,7 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
         let response = ciphertext.gamma_g2.mul_scalar(&sk_share.share);
         Ok(PartialDecryption {
             pd: response,
-            validator_id: sk_share.index,
+            validator_id: sk_share.validator_id,
             context: context.clone(),
             tx_index,
         })

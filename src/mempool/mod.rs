@@ -19,8 +19,10 @@
 //! # let mut rng = rand::thread_rng();
 //! # let crypto = TrxCrypto::<tess::PairingEngine>::new(&mut rng, 5, 3)?;
 //! # let signing_key = SigningKey::generate(&mut rng);
-//! # let setup = crypto.generate_trusted_setup(&mut rng, 128, 1000)?;
-//! # let epoch_keys = crypto.run_dkg(&mut rng, &vec![0,1,2,3,4], 3, std::sync::Arc::new(setup))?;
+//! # let setup = std::sync::Arc::new(crypto.generate_trusted_setup(&mut rng, 128, 1000)?);
+//! # let validators = vec![0, 1, 2, 3, 4];
+//! # let validator_keypairs = crypto.keygen_all_validators(&mut rng, &validators)?;
+//! # let epoch_keys = crypto.aggregate_epoch_keys(validator_keypairs, 3, setup)?;
 //! # let encrypted_tx = crypto.encrypt_transaction(&epoch_keys.public_key, b"data", b"metadata", &signing_key)?;
 //! // Create mempool with max 1000 transactions
 //! let mut mempool = EncryptedMempool::<tess::PairingEngine>::new(1000);

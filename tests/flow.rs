@@ -1,8 +1,46 @@
 use ed25519_dalek::SigningKey;
 use rand::thread_rng;
+use std::sync::Arc;
 use tess::{CurvePoint, PairingEngine};
 
 use trx::*;
+
+/// Helper function to generate epoch keys using the new silent setup API
+/// Returns (EpochKeys, HashMap of validator shares)
+///
+/// NOTE: This simulates the silent setup flow where in a real deployment:
+/// 1. Each validator independently samples their own BLS secret key
+/// 2. Each validator publishes their public key
+/// 3. The coordinator aggregates all public keys deterministically
+///
+/// Due to Tess API limitations, we generate all keys at once then distribute them,
+/// but this achieves the same end result as true silent setup.
+fn generate_epoch_keys(
+    trx: &TrxCrypto<PairingEngine>,
+    rng: &mut impl rand::RngCore,
+    parties: usize,
+    threshold: u32,
+    setup: Arc<TrustedSetup<PairingEngine>>,
+) -> Result<(EpochKeys<PairingEngine>, Vec<SecretKeyShare<PairingEngine>>), TrxError> {
+    let validators: Vec<ValidatorId> = (0..parties as u32).collect();
+
+    // Generate all validator key pairs (simulates silent setup where each validator
+    // independently generates their own key, then publishes their public key)
+
+    let validator_keypairs = validators
+        .iter()
+        .map(|&vid| trx.keygen_single_validator(rng, vid))
+        .collect::<Result<Vec<_>, _>>()?;
+    let validator_secret_keys = validator_keypairs
+        .iter()
+        .map(|kp| kp.secret_share.clone())
+        .collect::<Vec<_>>();
+
+    // Phase 2: Aggregate the published public keys (non-interactive)
+    let epoch_keys = trx.aggregate_epoch_keys(validator_keypairs, threshold, setup)?;
+
+    Ok((epoch_keys, validator_secret_keys))
+}
 
 #[test]
 fn happy_path_encrypt_decrypt() {
@@ -13,10 +51,8 @@ fn happy_path_encrypt_decrypt() {
     let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
     let setup = trx.generate_trusted_setup(&mut rng, parties, 2).unwrap();
     let setup = std::sync::Arc::new(setup);
-    let validators: Vec<ValidatorId> = (0..parties as u32).collect();
-    let epoch = trx
-        .run_dkg(&mut rng, &validators, threshold as u32, setup.clone())
-        .unwrap();
+    let (epoch, validator_shares) =
+        generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup.clone()).unwrap();
 
     let encrypted = trx
         .encrypt_transaction(&epoch.public_key, b"payload", b"aad", &client_key)
@@ -32,7 +68,7 @@ fn happy_path_encrypt_decrypt() {
 
     let mut partials = Vec::new();
     for validator_id in [0u32, 1u32, 2u32] {
-        let share = epoch.validator_shares.get(&validator_id).unwrap();
+        let share = &validator_shares[validator_id as usize];
         let pd = TrxCrypto::<PairingEngine>::generate_partial_decryption(
             share,
             &commitment,
@@ -71,10 +107,8 @@ fn batch_decrypt_flow() {
     let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
     let setup = trx.generate_trusted_setup(&mut rng, parties, 2).unwrap();
     let setup = std::sync::Arc::new(setup);
-    let validators: Vec<ValidatorId> = (0..parties as u32).collect();
-    let epoch = trx
-        .run_dkg(&mut rng, &validators, threshold as u32, setup.clone())
-        .unwrap();
+    let (epoch, validator_shares) =
+        generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup.clone()).unwrap();
 
     let context = DecryptionContext {
         block_height: 1,
@@ -95,7 +129,7 @@ fn batch_decrypt_flow() {
     let mut partials = Vec::new();
     for (tx_index, tx) in batch.iter().enumerate() {
         for validator_id in [0u32, 1u32, 2u32] {
-            let share = epoch.validator_shares.get(&validator_id).unwrap();
+            let share = &validator_shares[validator_id as usize];
             let pd = TrxCrypto::<PairingEngine>::generate_partial_decryption(
                 share,
                 &commitment,
@@ -137,10 +171,8 @@ fn mempool_roundtrip() {
     let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
     let setup = trx.generate_trusted_setup(&mut rng, parties, 1).unwrap();
     let setup = std::sync::Arc::new(setup);
-    let validators: Vec<ValidatorId> = (0..parties as u32).collect();
-    let epoch = trx
-        .run_dkg(&mut rng, &validators, threshold as u32, setup)
-        .unwrap();
+    let (epoch, _validator_shares) =
+        generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup).unwrap();
 
     let mut mempool = EncryptedMempool::<PairingEngine>::new(2);
     let tx1 = trx
@@ -169,10 +201,8 @@ fn test_context_index_bounds_checking() {
     // Create setup with only 2 kappa contexts
     let setup = trx.generate_trusted_setup(&mut rng, parties, 2).unwrap();
     let setup_arc = std::sync::Arc::new(setup);
-    let validators: Vec<ValidatorId> = (0..parties as u32).collect();
-    let epoch = trx
-        .run_dkg(&mut rng, &validators, threshold as u32, setup_arc.clone())
-        .unwrap();
+    let (epoch, _validator_shares) =
+        generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup_arc.clone()).unwrap();
 
     let batch = vec![trx
         .encrypt_transaction(&epoch.public_key, b"test", b"", &client_key)
@@ -247,10 +277,8 @@ fn test_mutex_poisoning_handling() {
 
     let setup = trx.generate_trusted_setup(&mut rng, parties, 2).unwrap();
     let setup_arc = std::sync::Arc::new(setup);
-    let validators: Vec<ValidatorId> = (0..parties as u32).collect();
-    let epoch = trx
-        .run_dkg(&mut rng, &validators, threshold as u32, setup_arc.clone())
-        .unwrap();
+    let (epoch, _validator_shares) =
+        generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup_arc.clone()).unwrap();
 
     let batch = vec![trx
         .encrypt_transaction(&epoch.public_key, b"test", b"", &client_key)
@@ -343,10 +371,8 @@ fn test_precomputation_cache_isolation() {
 
     let setup = trx.generate_trusted_setup(&mut rng, parties, 5).unwrap();
     let setup_arc = std::sync::Arc::new(setup);
-    let validators: Vec<ValidatorId> = (0..parties as u32).collect();
-    let epoch = trx
-        .run_dkg(&mut rng, &validators, threshold as u32, setup_arc.clone())
-        .unwrap();
+    let (epoch, _validator_shares) =
+        generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup_arc.clone()).unwrap();
 
     let batch = vec![trx
         .encrypt_transaction(&epoch.public_key, b"test", b"", &client_key)
@@ -388,10 +414,8 @@ fn test_precomputation_cache_key_includes_associated_data() {
 
     let setup = trx.generate_trusted_setup(&mut rng, parties, 5).unwrap();
     let setup_arc = std::sync::Arc::new(setup);
-    let validators: Vec<ValidatorId> = (0..parties as u32).collect();
-    let epoch = trx
-        .run_dkg(&mut rng, &validators, threshold as u32, setup_arc.clone())
-        .unwrap();
+    let (epoch, _validator_shares) =
+        generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup_arc.clone()).unwrap();
 
     let context = DecryptionContext {
         block_height: 1,
@@ -469,10 +493,8 @@ fn test_context_index_in_eval_proofs() {
     // Create setup with only 2 kappa contexts
     let setup = trx.generate_trusted_setup(&mut rng, parties, 2).unwrap();
     let setup_arc = std::sync::Arc::new(setup);
-    let validators: Vec<ValidatorId> = (0..parties as u32).collect();
-    let epoch = trx
-        .run_dkg(&mut rng, &validators, threshold as u32, setup_arc.clone())
-        .unwrap();
+    let (epoch, _validator_shares) =
+        generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup_arc.clone()).unwrap();
 
     let batch = vec![trx
         .encrypt_transaction(&epoch.public_key, b"test", b"", &client_key)
@@ -506,10 +528,8 @@ fn test_not_enough_shares_error() {
     let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
     let setup = trx.generate_trusted_setup(&mut rng, parties, 2).unwrap();
     let setup_arc = std::sync::Arc::new(setup);
-    let validators: Vec<ValidatorId> = (0..parties as u32).collect();
-    let epoch = trx
-        .run_dkg(&mut rng, &validators, threshold as u32, setup_arc.clone())
-        .unwrap();
+    let (epoch, validator_shares) =
+        generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup_arc.clone()).unwrap();
 
     let context = DecryptionContext {
         block_height: 1,
@@ -526,7 +546,7 @@ fn test_not_enough_shares_error() {
         TrxCrypto::<PairingEngine>::compute_eval_proofs(&batch, &context, &setup_arc).unwrap();
 
     // Provide only 1 partial decryption (less than threshold of 2)
-    let share = epoch.validator_shares.get(&0).unwrap();
+    let share = &validator_shares[0];
     let pd = TrxCrypto::<PairingEngine>::generate_partial_decryption(
         share,
         &commitment,
@@ -569,10 +589,8 @@ fn test_mempool_capacity_enforcement() {
     let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
     let setup = trx.generate_trusted_setup(&mut rng, parties, 1).unwrap();
     let setup_arc = std::sync::Arc::new(setup);
-    let validators: Vec<ValidatorId> = (0..parties as u32).collect();
-    let epoch = trx
-        .run_dkg(&mut rng, &validators, threshold as u32, setup_arc)
-        .unwrap();
+    let (epoch, _validator_shares) =
+        generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup_arc).unwrap();
 
     // Create mempool with capacity of 2
     let mut mempool = EncryptedMempool::<PairingEngine>::new(2);
@@ -647,10 +665,8 @@ fn test_batch_size_exceeds_srs() {
     // Create setup with very small SRS (only 2 transactions)
     let setup = trx.generate_trusted_setup(&mut rng, 2, 5).unwrap();
     let setup_arc = std::sync::Arc::new(setup);
-    let validators: Vec<ValidatorId> = (0..parties as u32).collect();
-    let epoch = trx
-        .run_dkg(&mut rng, &validators, threshold as u32, setup_arc.clone())
-        .unwrap();
+    let (epoch, _validator_shares) =
+        generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup_arc.clone()).unwrap();
 
     // Create batch with 3 transactions (exceeds SRS capacity)
     let batch = vec![

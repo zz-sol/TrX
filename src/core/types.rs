@@ -20,10 +20,10 @@ pub struct PublicKey<B: PairingBackend<Scalar = Fr>> {
 }
 
 /// Secret key share bound to a validator.
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct SecretKeyShare<B: PairingBackend> {
     pub share: B::Scalar,
-    pub index: u32,
+    pub validator_id: ValidatorId,
 }
 
 /// Encrypted transaction container with client signature.

@@ -642,7 +642,7 @@ checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 [[package]]
 name = "tess"
 version = "0.1.0"
-source = "git+https://github.com/zz-sol/Tess#ce23d69c74230e401f8eeea1bf603f830b8a7e1f"
+source = "git+https://github.com/zz-sol/Tess#af60e73c70ba11ef8225a6522c81b4c481bebcc2"
 dependencies = [
  "blake3",
  "blstrs",

@@ -74,11 +74,12 @@
 //! let crypto = TrxCrypto::<tess::PairingEngine>::new(&mut rng, 5, 3)?;
 //!
 //! // 2. Generate trusted setup
-//! let setup = crypto.generate_trusted_setup(&mut rng, 128, 1000)?;
+//! let setup = Arc::new(crypto.generate_trusted_setup(&mut rng, 128, 1000)?);
 //!
-//! // 3. Run DKG for epoch keys
+//! // 3. Silent setup: each validator generates their own key
 //! let validators = vec![0, 1, 2, 3, 4];
-//! let epoch_keys = crypto.run_dkg(&mut rng, &validators, 3, Arc::new(setup))?;
+//! let validator_keypairs = crypto.keygen_all_validators(&mut rng, &validators)?;
+//! let epoch_keys = crypto.aggregate_epoch_keys(validator_keypairs, 3, setup.clone())?;
 //!
 //! // 4. Client encrypts transaction
 //! let signing_key = SigningKey::generate(&mut rng);

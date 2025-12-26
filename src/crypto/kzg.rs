@@ -34,9 +34,10 @@
 //! # fn example() -> Result<(), TrxError> {
 //! # let mut rng = rand::thread_rng();
 //! # let crypto = TrxCrypto::<tess::PairingEngine>::new(&mut rng, 5, 3)?;
-//! # let setup = crypto.generate_trusted_setup(&mut rng, 128, 1000)?;
-//! # let setup_arc = Arc::new(setup);
-//! # let epoch_keys = crypto.run_dkg(&mut rng, &vec![0,1,2,3,4], 3, setup_arc.clone())?;
+//! # let setup_arc = Arc::new(crypto.generate_trusted_setup(&mut rng, 128, 1000)?);
+//! # let validators = vec![0, 1, 2, 3, 4];
+//! # let validator_keypairs = crypto.keygen_all_validators(&mut rng, &validators)?;
+//! # let epoch_keys = crypto.aggregate_epoch_keys(validator_keypairs, 3, setup_arc.clone())?;
 //! # let batch = vec![]; // encrypted transactions
 //! let context = DecryptionContext { block_height: 1, context_index: 0 };
 //!
