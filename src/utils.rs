@@ -1,23 +1,6 @@
 use blake3::Hasher;
 use tess::{FieldElement, Fr, PairingBackend};
 
-use crate::{DecryptionContext, EncryptedTransaction};
-
-pub(crate) fn hash_to_scalar<B: PairingBackend<Scalar = Fr>>(
-    batch: &[EncryptedTransaction<B>],
-    context: &DecryptionContext,
-) -> B::Scalar {
-    let mut hasher = Hasher::new();
-    hasher.update(&context.block_height.to_le_bytes());
-    hasher.update(&context.context_index.to_le_bytes());
-    for tx in batch {
-        hasher.update(&tx.ciphertext.payload);
-        hasher.update(&tx.associated_data);
-    }
-    let digest = hasher.finalize();
-    scalar_from_hash::<B>(digest.as_bytes())
-}
-
 /// Attempts to map a hash digest into a field element by rejection sampling.
 
 pub(crate) fn scalar_from_hash<B: PairingBackend<Scalar = Fr>>(bytes: &[u8]) -> B::Scalar {

@@ -22,13 +22,13 @@ pub struct PrecomputationEngine<B: PairingBackend<Scalar = Fr>> {
 
 /// Cached precomputation output.
 #[derive(Debug)]
-pub struct PrecomputedData<B: PairingBackend> {
+pub struct PrecomputedData<B: PairingBackend<Scalar = Fr>> {
     pub digest: BatchCommitment<B>,
-    pub eval_proofs: Vec<EvalProof>,
+    pub eval_proofs: Vec<EvalProof<B>>,
     pub computation_time: Duration,
 }
 
-impl<B: PairingBackend> Clone for PrecomputedData<B>
+impl<B: PairingBackend<Scalar = Fr>> Clone for PrecomputedData<B>
 where
     B::G1: Clone,
 {

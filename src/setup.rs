@@ -3,13 +3,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use rand_core::RngCore;
-use tess::{CurvePoint, FieldElement, Fr, PairingBackend, ThresholdEncryption};
+use tess::{CurvePoint, FieldElement, Fr, PairingBackend, SRS, ThresholdEncryption};
 
 use crate::{PublicKey, SecretKeyShare, TrxCrypto, TrxError, ValidatorId};
 
 /// Trusted setup containing powers of tau and randomized kappa contexts.
 #[derive(Debug)]
 pub struct TrustedSetup<B: PairingBackend<Scalar = Fr>> {
+    pub srs: SRS<B>,
     pub powers_of_tau: Vec<B::G1>,
     pub powers_of_tau_g2: Vec<B::G2>,
     pub kappa_setups: Vec<KappaSetup<B>>,
@@ -85,6 +86,7 @@ impl<B: PairingBackend<Scalar = Fr>> SetupManager<B> for TrxCrypto<B> {
         }
 
         Ok(TrustedSetup {
+            srs,
             powers_of_tau,
             powers_of_tau_g2,
             kappa_setups,

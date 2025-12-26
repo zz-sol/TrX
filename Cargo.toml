@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 tess = { git = "https://github.com/zz-sol/Tess", features = ["blst"] }
+# tess = { path = "../Tess", features = ["blst"] }
 rand = "0.8"
 rand_core = "0.6"
 blake3 = "1"

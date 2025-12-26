@@ -8,8 +8,7 @@
 //! - Precomputation cache and mempool scaffolding
 //!
 //! Notes:
-//! - Batch digest and evaluation proofs are placeholders based on hashing and
-//!   are meant to be replaced by real KZG evaluation proofs when available.
+//! - Batch digest and evaluation proofs use KZG commitments and openings.
 //! - The TrxCrypto instance owns a single Tess Params (SRS + Lagrange powers)
 //!   so encryption and key aggregation stay consistent.
 

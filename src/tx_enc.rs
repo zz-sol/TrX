@@ -7,7 +7,6 @@ use tess::{
     ThresholdEncryption,
 };
 
-use crate::utils::hash_to_scalar;
 use crate::{
     BatchCommitment, EvalProof, PublicKey, SecretKeyShare, TrustedSetup, TrxCrypto, TrxError,
     TxPublicVerifyKey, TxSignature, ValidatorId,
@@ -130,12 +129,12 @@ pub trait BatchDecryption<B: PairingBackend<Scalar = Fr>> {
         batch: &[EncryptedTransaction<B>],
         context: &DecryptionContext,
         setup: &TrustedSetup<B>,
-    ) -> Result<Vec<EvalProof>, TrxError>;
+    ) -> Result<Vec<EvalProof<B>>, TrxError>;
 
     fn combine_and_decrypt(
         &self,
         partial_decryptions: Vec<PartialDecryption<B>>,
-        eval_proofs: &[EvalProof],
+        eval_proofs: &[EvalProof<B>],
         batch: &[EncryptedTransaction<B>],
         threshold: u32,
         agg_key: &AggregateKey<B>,
@@ -150,12 +149,7 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
         context: &DecryptionContext,
         setup: &TrustedSetup<B>,
     ) -> Result<BatchCommitment<B>, TrxError> {
-        let scalar = hash_to_scalar::<B>(batch, context);
-        let com = setup.powers_of_tau[0].mul_scalar(&scalar);
-        Ok(BatchCommitment {
-            com,
-            polynomial_degree: batch.len() as u32,
-        })
+        BatchCommitment::compute(batch, context, setup)
     }
 
     fn generate_partial_decryption(
@@ -188,26 +182,15 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
     fn compute_eval_proofs(
         batch: &[EncryptedTransaction<B>],
         context: &DecryptionContext,
-        _setup: &TrustedSetup<B>,
-    ) -> Result<Vec<EvalProof>, TrxError> {
-        let mut proofs = Vec::with_capacity(batch.len());
-        for (idx, tx) in batch.iter().enumerate() {
-            let mut hasher = Hasher::new();
-            hasher.update(&context.block_height.to_le_bytes());
-            hasher.update(&context.context_index.to_le_bytes());
-            hasher.update(&idx.to_le_bytes());
-            hasher.update(&tx.ciphertext.payload);
-            proofs.push(EvalProof {
-                bytes: hasher.finalize().as_bytes().to_vec(),
-            });
-        }
-        Ok(proofs)
+        setup: &TrustedSetup<B>,
+    ) -> Result<Vec<EvalProof<B>>, TrxError> {
+        EvalProof::compute_for_batch(batch, context, setup)
     }
 
     fn combine_and_decrypt(
         &self,
         partial_decryptions: Vec<PartialDecryption<B>>,
-        _eval_proofs: &[EvalProof],
+        _eval_proofs: &[EvalProof<B>],
         batch: &[EncryptedTransaction<B>],
         threshold: u32,
         agg_key: &AggregateKey<B>,
