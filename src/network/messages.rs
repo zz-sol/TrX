@@ -18,15 +18,14 @@ use crate::{
 /// # Message Flow
 ///
 /// ```text
-/// Client                Proposer              Validators
-///   │                      │                       │
-///   ├─SubmitEncryptedTx──→│                       │
-///   │                      ├─ProposeBlock────────→│
-///   │                      │                       ├─VoteWithDecryption→
-///   │                      │←─────────────────────┤
-///   │                      ├─RequestDecryptionShares→│
-///   │                      │←DecryptionShare──────┤
-///   │                      │                       │
+/// Client               Proposer/Leader            Validators
+///   │                      │                          │
+///   ├─SubmitEncryptedTx──→ │                          │
+///   │                      ├───ProposeBlock─────────→ │
+///   │                      │ ←──VoteWithDecryption────┤
+///   │                      ├──RequestDecryptionShares→│
+///   │                      │ ←───DecryptionShare──────┤
+///   │                      │                          │
 /// ```
 #[derive(Clone, Debug)]
 pub enum TrxMessage<B: PairingBackend> {

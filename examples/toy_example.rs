@@ -3,17 +3,25 @@ use std::sync::Arc;
 use ed25519_dalek::SigningKey;
 use rand::thread_rng;
 use tess::PairingEngine;
+use tracing_subscriber::fmt;
 use trx::{
     BatchContext, BatchDecryption, DecryptionContext, EncryptedMempool, SetupManager,
     TransactionEncryption, TrxCrypto, ValidatorId,
 };
 
-const NUM_VALIDATORS: usize = 4;
-const THRESHOLD: usize = 2;
+const NUM_VALIDATORS: usize = 2048;
+const THRESHOLD: usize = 1400;
+// max number of encrypted transactions per batch/block (also sets the SRS size for KZG commitments).
 const MAX_BATCH: usize = 32;
+// number of pre-generated Kappa contexts in the trusted setup (how many concurrent batches/contexts you can support before re-setup).
 const MAX_CONTEXTS: usize = 16;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    fmt()
+        .with_max_level(tracing::Level::INFO)
+        .with_span_events(fmt::format::FmtSpan::ENTER | fmt::format::FmtSpan::CLOSE)
+        .init();
+
     let mut rng = thread_rng();
 
     // 1) Bootstrapping (operator)

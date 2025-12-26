@@ -765,6 +765,7 @@ dependencies = [
  "solana-bls-signatures",
  "tess",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

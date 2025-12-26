@@ -84,10 +84,6 @@ impl<B: PairingBackend<Scalar = Fr>> TrxCrypto<B> {
 pub struct TrustedSetup<B: PairingBackend<Scalar = Fr>> {
     /// Structured reference string for KZG commitments
     pub srs: SRS<B>,
-    /// Powers of tau in G1: [τ⁰G, τ¹G, τ²G, ..., τⁿG]
-    pub powers_of_tau: Vec<B::G1>,
-    /// Powers of tau in G2: [τ⁰H, τ¹H, τ²H, ..., τⁿH]
-    pub powers_of_tau_g2: Vec<B::G2>,
     /// Randomized kappa contexts (one per potential decryption context)
     pub kappa_setups: Vec<KappaSetup<B>>,
 }
@@ -200,13 +196,11 @@ impl<B: PairingBackend<Scalar = Fr>> SetupManager<B> for TrxCrypto<B> {
         let srs = <tess::KZG as tess::PolynomialCommitment<B>>::setup(max_batch_size, &seed)
             .map_err(|e| TrxError::Backend(e.to_string()))?;
 
-        let powers_of_tau = srs.powers_of_g.clone();
-        let powers_of_tau_g2 = srs.powers_of_h.clone();
-
         let mut kappa_setups = Vec::with_capacity(max_contexts);
         for idx in 0..max_contexts {
             let kappa = B::Scalar::random(rng);
-            let elements = powers_of_tau
+            let elements = srs
+                .powers_of_g
                 .iter()
                 .map(|g| g.mul_scalar(&kappa))
                 .collect::<Vec<_>>();
@@ -219,8 +213,6 @@ impl<B: PairingBackend<Scalar = Fr>> SetupManager<B> for TrxCrypto<B> {
 
         Ok(TrustedSetup {
             srs,
-            powers_of_tau,
-            powers_of_tau_g2,
             kappa_setups,
         })
     }
@@ -283,13 +275,13 @@ impl<B: PairingBackend<Scalar = Fr>> SetupManager<B> for TrxCrypto<B> {
         level = "info",
         skip_all,
         fields(
-            powers_g1 = setup.powers_of_tau.len(),
-            powers_g2 = setup.powers_of_tau_g2.len(),
+            powers_g1 = setup.srs.powers_of_g.len(),
+            powers_g2 = setup.srs.powers_of_h.len(),
             kappa_len = setup.kappa_setups.len()
         )
     )]
     fn verify_setup(&self, setup: &TrustedSetup<B>) -> Result<(), TrxError> {
-        if setup.powers_of_tau.is_empty() || setup.powers_of_tau_g2.is_empty() {
+        if setup.srs.powers_of_g.is_empty() || setup.srs.powers_of_h.is_empty() {
             return Err(TrxError::InvalidInput(
                 "trusted setup missing powers".into(),
             ));
@@ -436,7 +428,7 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
     }
 
     #[instrument(
-        level = "info",
+        level = "trace",
         skip_all,
         fields(tx_index, validator_id = sk_share.index)
     )]

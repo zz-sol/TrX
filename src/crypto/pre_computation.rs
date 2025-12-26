@@ -57,7 +57,6 @@ use crate::{
     BatchCommitment, BatchDecryption, DecryptionContext, EncryptedTransaction, EvalProof,
     TrustedSetup, TrxCrypto, TrxError,
 };
-// === Precomputation ===
 
 /// Cache for expensive batch commitment and proof computations.
 ///

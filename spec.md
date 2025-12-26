@@ -82,8 +82,6 @@ pub struct BatchContext<'a> {
 ```rust
 pub struct TrustedSetup {
     srs: SRS, // KZG parameters
-    powers_of_tau: Vec<G1Element>,  // [g, g^τ, ..., g^τ^MAX_BATCH_SIZE]
-    powers_of_tau_g2: Vec<G2Element>, // [h, h^τ, ..., h^τ^MAX_BATCH_SIZE]
     kappa_setups: Vec<KappaSetup>,   // Randomized KZG setups
 }
 
