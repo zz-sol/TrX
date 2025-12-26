@@ -3,14 +3,13 @@ use std::collections::{BTreeMap, HashMap};
 use blake3::Hasher;
 use ed25519_dalek::{Signer, SigningKey};
 use tess::{
-    AggregateKey, Ciphertext as TessCiphertext, CurvePoint, DecryptionResult, FieldElement, Fr,
-    PairingBackend, PolynomialCommitment, ThresholdEncryption, KZG,
+    AggregateKey, Ciphertext as TessCiphertext, CurvePoint, DecryptionResult, Fr, PairingBackend,
+    ThresholdEncryption,
 };
 
 use crate::{
-    batch_polynomial, BatchCommitment, EvalProof, PublicKey, SecretKeyShare, TrustedSetup,
-    TrxCrypto, TrxError,
-    TxPublicVerifyKey, TxSignature, ValidatorId,
+    BatchCommitment, EvalProof, PublicKey, SecretKeyShare, TrustedSetup, TrxCrypto, TrxError,
+    TxPublicVerifyKey, TxSignature, ValidatorId, verify_eval_proofs,
 };
 
 /// Encryption interface for TrX transactions.
@@ -132,14 +131,19 @@ pub trait BatchDecryption<B: PairingBackend<Scalar = Fr>> {
         setup: &TrustedSetup<B>,
     ) -> Result<Vec<EvalProof<B>>, TrxError>;
 
+    #[allow(clippy::too_many_arguments)]
     fn combine_and_decrypt(
         &self,
         partial_decryptions: Vec<PartialDecryption<B>>,
         eval_proofs: &[EvalProof<B>],
         batch: &[EncryptedTransaction<B>],
         threshold: u32,
+        setup: &TrustedSetup<B>,
+        commitment: &BatchCommitment<B>,
         agg_key: &AggregateKey<B>,
-    ) -> Result<Vec<DecryptionResult>, TrxError>;
+    ) -> Result<Vec<DecryptionResult>, TrxError>
+    where
+        B::G1: PartialEq;
 }
 
 // === TrX crypto adapter ===
@@ -194,8 +198,13 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
         eval_proofs: &[EvalProof<B>],
         batch: &[EncryptedTransaction<B>],
         threshold: u32,
+        setup: &TrustedSetup<B>,
+        commitment: &BatchCommitment<B>,
         agg_key: &AggregateKey<B>,
-    ) -> Result<Vec<DecryptionResult>, TrxError> {
+    ) -> Result<Vec<DecryptionResult>, TrxError>
+    where
+        B::G1: PartialEq,
+    {
         if partial_decryptions.is_empty() {
             return Err(TrxError::NotEnoughShares {
                 required: threshold as usize,
@@ -220,35 +229,7 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
         }
 
         if !eval_proofs.is_empty() || !batch.is_empty() {
-            if eval_proofs.len() != batch.len() {
-                return Err(TrxError::InvalidInput(
-                    "eval proof count must match batch size".into(),
-                ));
-            }
-            let polynomial = batch_polynomial(batch, &context);
-            let commitment = KZG::commit_g1(&agg_key.kzg_params, &polynomial)
-                .map_err(|err| TrxError::Backend(err.to_string()))?;
-            for (idx, proof) in eval_proofs.iter().enumerate() {
-                let expected = Fr::from_u64(idx as u64 + 1);
-                if proof.point != expected {
-                    return Err(TrxError::InvalidInput(
-                        "eval proof point mismatch".into(),
-                    ));
-                }
-                let ok = KZG::verify_g1(
-                    &agg_key.kzg_params,
-                    &commitment,
-                    &proof.point,
-                    &proof.value,
-                    &proof.proof,
-                )
-                .map_err(|err| TrxError::Backend(err.to_string()))?;
-                if !ok {
-                    return Err(TrxError::InvalidInput(
-                        "invalid evaluation proof".into(),
-                    ));
-                }
-            }
+            verify_eval_proofs(setup, commitment, batch, &context, eval_proofs)?;
         }
 
         let mut grouped: BTreeMap<usize, Vec<tess::PartialDecryption<B>>> = BTreeMap::new();

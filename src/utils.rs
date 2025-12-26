@@ -2,7 +2,6 @@ use blake3::Hasher;
 use tess::{FieldElement, Fr, PairingBackend};
 
 /// Attempts to map a hash digest into a field element by rejection sampling.
-
 pub(crate) fn scalar_from_hash<B: PairingBackend<Scalar = Fr>>(bytes: &[u8]) -> B::Scalar {
     let mut counter = 0u64;
     loop {

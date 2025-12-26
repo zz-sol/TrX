@@ -96,6 +96,8 @@ fn batch_decrypt_flow() {
             &eval_proofs,
             &batch,
             threshold as u32,
+            &setup,
+            &commitment,
             &epoch.public_key.agg_key,
         )
         .unwrap();

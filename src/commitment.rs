@@ -38,7 +38,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            com: self.com.clone(),
+            com: self.com,
             polynomial_degree: self.polynomial_degree,
         }
     }
@@ -59,7 +59,7 @@ where
         Self {
             point: self.point,
             value: self.value,
-            proof: self.proof.clone(),
+            proof: self.proof,
         }
     }
 }
@@ -112,4 +112,47 @@ fn tx_commitment_scalar<B: PairingBackend<Scalar = Fr>>(
     hasher.update(&tx.ciphertext.payload);
     hasher.update(&tx.associated_data);
     scalar_from_hash::<B>(hasher.finalize().as_bytes())
+}
+
+pub fn verify_eval_proofs<B: PairingBackend<Scalar = Fr>>(
+    setup: &TrustedSetup<B>,
+    commitment: &BatchCommitment<B>,
+    batch: &[EncryptedTransaction<B>],
+    context: &DecryptionContext,
+    proofs: &[EvalProof<B>],
+) -> Result<(), TrxError>
+where
+    B::G1: PartialEq,
+{
+    if proofs.len() != batch.len() {
+        return Err(TrxError::InvalidInput(
+            "eval proof count must match batch size".into(),
+        ));
+    }
+    let polynomial = batch_polynomial(batch, context);
+    let expected_commitment = KZG::commit_g1(&setup.srs, &polynomial)
+        .map_err(|err| TrxError::Backend(err.to_string()))?;
+    if expected_commitment != commitment.com {
+        return Err(TrxError::InvalidInput(
+            "batch commitment does not match batch".into(),
+        ));
+    }
+    for (idx, proof) in proofs.iter().enumerate() {
+        let expected = Fr::from_u64(idx as u64 + 1);
+        if proof.point != expected {
+            return Err(TrxError::InvalidInput("eval proof point mismatch".into()));
+        }
+        let ok = KZG::verify_g1(
+            &setup.srs,
+            &commitment.com,
+            &proof.point,
+            &proof.value,
+            &proof.proof,
+        )
+        .map_err(|err| TrxError::Backend(err.to_string()))?;
+        if !ok {
+            return Err(TrxError::InvalidInput("invalid evaluation proof".into()));
+        }
+    }
+    Ok(())
 }

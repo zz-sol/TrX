@@ -72,6 +72,12 @@ impl<B: PairingBackend<Scalar = Fr>> PrecomputationEngine<B> {
     }
 }
 
+impl<B: PairingBackend<Scalar = Fr>> Default for PrecomputationEngine<B> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 fn precompute_key<B: PairingBackend>(
     batch: &[EncryptedTransaction<B>],
     context: &DecryptionContext,

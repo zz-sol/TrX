@@ -1,5 +1,5 @@
 use blake3::Hasher;
-use solana_bls_signatures::{pubkey::VerifiablePubkey, SecretKey};
+use solana_bls_signatures::{SecretKey, pubkey::VerifiablePubkey};
 use tess::{CurvePoint, PairingBackend};
 
 use crate::{PartialDecryption, TrxError};
@@ -31,9 +31,7 @@ pub fn verify_validator_vote<B: PairingBackend>(
         .verify_signature(signature, message.as_ref())
         .map_err(|err| TrxError::InvalidInput(format!("invalid validator signature: {err}")))?;
     if !ok {
-        return Err(TrxError::InvalidInput(
-            "invalid validator signature".into(),
-        ));
+        return Err(TrxError::InvalidInput("invalid validator signature".into()));
     }
     Ok(())
 }
@@ -58,9 +56,7 @@ pub fn verify_validator_share<B: PairingBackend>(
         .verify_signature(signature, message.as_ref())
         .map_err(|err| TrxError::InvalidInput(format!("invalid validator signature: {err}")))?;
     if !ok {
-        return Err(TrxError::InvalidInput(
-            "invalid validator signature".into(),
-        ));
+        return Err(TrxError::InvalidInput("invalid validator signature".into()));
     }
     Ok(())
 }
