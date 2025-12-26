@@ -4,12 +4,14 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE-MIT)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE-APACHE)
 
-A production-ready threshold-encrypted transaction system for blockchain networks, built on [{TrX}: Encrypted Mempools in High Performance {BFT} Protocols](https://eprint.iacr.org/2025/2032) and [Threshold Encryption with Silent Setup](https://eprint.iacr.org/2024/263).
+A production-ready threshold-encrypted transaction system for blockchain networks, built on
 
-## Relationship to two Paper
+- [TrX: Encrypted Mempools in High Performance BFT Protocols](https://eprint.iacr.org/2025/2032), and 
+- [Threshold Encryption with Silent Setup](https://eprint.iacr.org/2024/263).
 
 The overall archtecture follows [TrX paper](https://eprint.iacr.org/2025/2032). We replace the witness encryption scheme in TrX with the one in [Tess paper](https://eprint.iacr.org/2024/263) to achieve non-interactive key generation.
 
+## Acknowledgements
 If you use this library in your research, please cite the original papers:
 ```bibtex
 @misc{cryptoeprint:2025/2032,

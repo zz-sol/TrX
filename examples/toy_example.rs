@@ -166,9 +166,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut partials = Vec::new();
     for (tx_index, tx) in batch.iter().enumerate() {
         // Collect shares from THRESHOLD + 1 validators (minimum required)
-        for validator_id in 0..(THRESHOLD + 1) {
-            let share = &validator_secret_shares[validator_id];
-
+        for share in validator_secret_shares.iter().take(THRESHOLD + 1) {
             // Each validator generates a partial decryption for this transaction
             let pd = TrxCrypto::<PairingEngine>::generate_partial_decryption(
                 share,
