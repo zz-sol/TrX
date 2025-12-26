@@ -115,11 +115,10 @@
 //!
 //! # Module Organization
 //!
-//! - [`core`]: Protocol types and errors
-//! - [`crypto`]: Tess/KZG/BLS/Ed25519 adapters
-//! - [`mempool`]: Encrypted transaction mempool
-//! - [`network`]: Network message types
-//! - [`constants`]: Configuration constants
+//! - `core`: Protocol types and errors
+//! - `crypto`: Tess/KZG/BLS/Ed25519 adapters
+//! - `mempool`: Encrypted transaction mempool
+//! - `network`: Network message types
 //!
 //! # References
 //!
@@ -128,14 +127,12 @@
 
 extern crate alloc;
 
-mod constants;
 mod core;
 mod crypto;
 mod mempool;
 mod network;
 mod utils;
 
-pub use constants::*;
 pub use core::errors::*;
 pub use core::types::*;
 pub use crypto::kzg::*;

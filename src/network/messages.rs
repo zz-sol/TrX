@@ -12,6 +12,9 @@ use crate::{
 
 /// Network protocol messages for TrX.
 ///
+/// Placeholder type: this crate doesn't define a concrete network layer.
+/// Consumers should adapt or replace these messages to fit their own protocol.
+///
 /// Defines the complete set of messages exchanged between clients, validators,
 /// and proposers during the encrypted transaction lifecycle.
 ///

@@ -26,7 +26,7 @@ use crate::{
 #[derive(Debug)]
 pub struct TrxCrypto<B: PairingBackend<Scalar = Fr>> {
     /// Tess threshold encryption scheme
-    pub(crate) scheme: SilentThresholdScheme<B>,
+    pub(crate) tess_scheme: SilentThresholdScheme<B>,
     /// Tess cryptographic parameters (SRS, Lagrange powers)
     pub(crate) params: Params<B>,
     /// Total number of parties (validators)
@@ -63,10 +63,10 @@ impl<B: PairingBackend<Scalar = Fr>> TrxCrypto<B> {
                 "threshold must be in 1..parties".into(),
             ));
         }
-        let scheme = SilentThresholdScheme::<B>::new();
-        let params = scheme.param_gen(rng, parties, threshold)?;
+        let tess_scheme = SilentThresholdScheme::<B>::new();
+        let params = tess_scheme.param_gen(rng, parties, threshold)?;
         Ok(Self {
-            scheme,
+            tess_scheme,
             params,
             parties,
             threshold,
@@ -147,6 +147,8 @@ impl<B: PairingBackend> KappaSetup<B> {
 #[derive(Clone, Debug)]
 pub struct EpochKeys<B: PairingBackend<Scalar = Fr>> {
     /// Unique identifier for this epoch
+    ///
+    /// Placeholder field: callers should supply their own epoch ID scheme.
     pub epoch_id: u64,
     /// Aggregate threshold public key for encryption
     pub public_key: PublicKey<B>,
@@ -240,10 +242,10 @@ impl<B: PairingBackend<Scalar = Fr>> SetupManager<B> for TrxCrypto<B> {
             ));
         }
 
-        let keys = self.scheme.keygen(rng, parties, &self.params)?;
-        let agg_key = self
-            .scheme
-            .aggregate_public_key(&keys.public_keys, &self.params, parties)?;
+        let keys = self.tess_scheme.keygen(rng, parties, &self.params)?;
+        let agg_key =
+            self.tess_scheme
+                .aggregate_public_key(&keys.public_keys, &self.params, parties)?;
 
         let mut validator_shares = HashMap::new();
         for (idx, sk) in keys.secret_keys.iter().enumerate() {
@@ -315,9 +317,13 @@ impl<B: PairingBackend<Scalar = Fr>> TransactionEncryption<B> for TrxCrypto<B> {
         signing_key: &SigningKey,
     ) -> Result<EncryptedTransaction<B>, TrxError> {
         let mut rng = rand::thread_rng();
-        let ciphertext =
-            self.scheme
-                .encrypt(&mut rng, &ek.agg_key, &self.params, self.threshold, payload)?;
+        let ciphertext = self.tess_scheme.encrypt(
+            &mut rng,
+            &ek.agg_key,
+            &self.params,
+            self.threshold,
+            payload,
+        )?;
         let signing_message = client_signature_message(&ciphertext, associated_data);
         let signature = signing_key.sign(signing_message.as_ref());
         let vk_sig = signing_key.verifying_key();
@@ -554,9 +560,12 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
                     "selector[0] must be true for interpolation".into(),
                 ));
             }
-            let result =
-                self.scheme
-                    .aggregate_decrypt(&tx.ciphertext, &partials, &selector, agg_key)?;
+            let result = self.tess_scheme.aggregate_decrypt(
+                &tx.ciphertext,
+                &partials,
+                &selector,
+                agg_key,
+            )?;
             results.push(result);
         }
 
