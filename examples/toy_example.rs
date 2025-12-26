@@ -204,7 +204,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ========================================================================
     println!("=== Decryption Results ===");
     for (idx, res) in results.iter().enumerate() {
-        let plaintext = res.plaintext.as_ref().map(|p| p.as_slice()).unwrap_or(&[]);
+        let plaintext = res.plaintext.as_deref().unwrap_or(&[]);
         println!(
             "Transaction {}: {:?}",
             idx,
