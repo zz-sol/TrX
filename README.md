@@ -1,10 +1,21 @@
-# TrX
+# TrX: Encrypted Mempools in High Performance BFT Protocols
 
 ![CI](https://github.com/zz-sol/TrX/actions/workflows/ci.yml/badge.svg?branch=main)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE-MIT)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE-APACHE)
 
 A production-ready threshold-encrypted transaction system for blockchain networks, built on [Tess](https://github.com/zz-sol/Tess).
+
+If you use TrX in your research, please cite the original paper:
+```bibtex
+@misc{cryptoeprint:2025/2032,
+      author = {Rex Fernando and Guru-Vamsi Policharla and Andrei Tonkikh and Zhuolun Xiang},
+      title = {{TrX}: Encrypted Mempools in High Performance {BFT} Protocols},
+      howpublished = {Cryptology {ePrint} Archive, Paper 2025/2032},
+      year = {2025},
+      url = {https://eprint.iacr.org/2025/2032}
+}
+```
 
 ## Overview
 
