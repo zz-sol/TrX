@@ -1,16 +1,98 @@
+//! Cryptographic signature helpers for clients and validators.
+//!
+//! This module provides signature functionality for two different parties in TrX:
+//!
+//! # Client Signatures (Ed25519)
+//!
+//! Clients sign their encrypted transactions using Ed25519:
+//! - Fast signature generation and verification
+//! - Small signature size (64 bytes)
+//! - Binds transaction ciphertext to associated metadata
+//!
+//! The signature message is `BLAKE3(ciphertext.payload || associated_data)`.
+//!
+//! # Validator Signatures (BLS)
+//!
+//! Validators use BLS signatures for consensus operations:
+//! - **Vote Signatures**: Sign votes with optional partial decryptions
+//! - **Share Signatures**: Sign decryption shares for authenticity
+//!
+//! BLS signatures enable aggregation and batch verification in consensus.
+//!
+//! # Message Formats
+//!
+//! All signature messages include domain separation tags (e.g., `"trx:validator-vote:v1"`)
+//! to prevent cross-protocol attacks and enable protocol versioning.
+//!
+//! # Example
+//!
+//! ```rust,no_run
+//! # use trx2::*;
+//! # use ed25519_dalek::SigningKey;
+//! # use solana_bls_signatures::SecretKey;
+//! # fn example() -> Result<(), TrxError> {
+//! # let mut rng = rand::thread_rng();
+//! # let vote = b"vote_data";
+//! # let block_hash = b"block_hash";
+//! # let pd = PartialDecryption::<tess::Bn254> {
+//! #     pd: tess::Bn254::G2::default(),
+//! #     validator_id: 0,
+//! #     context: DecryptionContext { block_height: 1, context_index: 0 },
+//! #     tx_index: 0,
+//! # };
+//! // Validator signs a vote with partial decryption
+//! let signing_key = ValidatorSigningKey::new(&mut rng);
+//! let signature = sign_validator_vote(&signing_key, vote, Some(&pd));
+//!
+//! // Verify the signature
+//! let verify_key = signing_key.pubkey().compress();
+//! verify_validator_vote(&verify_key, &signature, vote, Some(&pd))?;
+//! # Ok(())
+//! # }
+//! ```
+
 use blake3::Hasher;
 use solana_bls_signatures::{SecretKey, pubkey::VerifiablePubkey};
 use tess::{CurvePoint, PairingBackend};
 
 use crate::{PartialDecryption, TrxError};
 
+/// Client's Ed25519 public verification key.
 pub type TxPublicVerifyKey = ed25519_dalek::VerifyingKey;
+
+/// Client's Ed25519 signature over transaction ciphertext.
 pub type TxSignature = ed25519_dalek::Signature;
 
+/// Validator's BLS secret signing key.
 pub type ValidatorSigningKey = SecretKey;
+
+/// Validator's compressed BLS public verification key.
 pub type ValidatorVerifyKey = solana_bls_signatures::PubkeyCompressed;
+
+/// Validator's compressed BLS signature.
 pub type ValidatorSignature = solana_bls_signatures::SignatureCompressed;
 
+/// Signs a validator vote, optionally including a partial decryption.
+///
+/// Validators sign their consensus votes using BLS signatures. The vote may
+/// include a partial decryption share for the current batch.
+///
+/// # Arguments
+///
+/// * `signing_key` - Validator's BLS secret key
+/// * `vote` - Vote message (e.g., block hash, proposal ID)
+/// * `partial_decryption` - Optional partial decryption to include in signature
+///
+/// # Returns
+///
+/// A compressed BLS signature over the vote message.
+///
+/// # Message Format
+///
+/// The signed message is:
+/// ```text
+/// BLAKE3("trx:validator-vote:v1" || vote || optional_pd_data)
+/// ```
 pub fn sign_validator_vote<B: PairingBackend>(
     signing_key: &ValidatorSigningKey,
     vote: &[u8],
@@ -20,6 +102,18 @@ pub fn sign_validator_vote<B: PairingBackend>(
     signing_key.sign(message.as_ref()).into()
 }
 
+/// Verifies a validator vote signature.
+///
+/// # Arguments
+///
+/// * `verify_key` - Validator's BLS public key
+/// * `signature` - Signature to verify
+/// * `vote` - Vote message that was signed
+/// * `partial_decryption` - Optional partial decryption included in signature
+///
+/// # Errors
+///
+/// Returns [`TrxError::InvalidInput`] if signature verification fails.
 pub fn verify_validator_vote<B: PairingBackend>(
     verify_key: &ValidatorVerifyKey,
     signature: &ValidatorSignature,
@@ -36,6 +130,26 @@ pub fn verify_validator_vote<B: PairingBackend>(
     Ok(())
 }
 
+/// Signs a decryption share for a specific block.
+///
+/// Used when validators distribute their partial decryptions separately from votes
+/// (e.g., in an optimistic decryption protocol where shares are sent after finality).
+///
+/// # Arguments
+///
+/// * `signing_key` - Validator's BLS secret key
+/// * `block_hash` - Hash of the block containing the batch
+/// * `share` - Partial decryption share to sign
+///
+/// # Returns
+///
+/// A compressed BLS signature binding the share to the block.
+///
+/// # Message Format
+///
+/// ```text
+/// BLAKE3("trx:decryption-share:v1" || block_hash || share_data)
+/// ```
 pub fn sign_validator_share<B: PairingBackend>(
     signing_key: &ValidatorSigningKey,
     block_hash: &[u8],
@@ -45,6 +159,18 @@ pub fn sign_validator_share<B: PairingBackend>(
     signing_key.sign(message.as_ref()).into()
 }
 
+/// Verifies a decryption share signature.
+///
+/// # Arguments
+///
+/// * `verify_key` - Validator's BLS public key
+/// * `signature` - Signature to verify
+/// * `block_hash` - Block hash included in signature
+/// * `share` - Partial decryption share that was signed
+///
+/// # Errors
+///
+/// Returns [`TrxError::InvalidInput`] if signature verification fails.
 pub fn verify_validator_share<B: PairingBackend>(
     verify_key: &ValidatorVerifyKey,
     signature: &ValidatorSignature,
@@ -61,6 +187,18 @@ pub fn verify_validator_share<B: PairingBackend>(
     Ok(())
 }
 
+/// Constructs the signing message for validator votes.
+///
+/// Includes domain separation and optionally binds partial decryption data.
+///
+/// # Arguments
+///
+/// * `vote` - Vote payload
+/// * `partial_decryption` - Optional partial decryption to include
+///
+/// # Returns
+///
+/// A 32-byte BLAKE3 digest used as the BLS signing message.
 fn validator_vote_message<B: PairingBackend>(
     vote: &[u8],
     partial_decryption: Option<&PartialDecryption<B>>,
@@ -82,6 +220,18 @@ fn validator_vote_message<B: PairingBackend>(
     out
 }
 
+/// Constructs the signing message for decryption shares.
+///
+/// Binds the share to a specific block and includes all share metadata.
+///
+/// # Arguments
+///
+/// * `block_hash` - Hash of the block
+/// * `share` - Partial decryption share
+///
+/// # Returns
+///
+/// A 32-byte BLAKE3 digest used as the BLS signing message.
 fn validator_share_message<B: PairingBackend>(
     block_hash: &[u8],
     share: &PartialDecryption<B>,

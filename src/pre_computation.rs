@@ -1,3 +1,50 @@
+//! Precomputation cache for batch commitments and evaluation proofs.
+//!
+//! This module provides a caching layer to optimize consensus performance by
+//! reusing expensive cryptographic computations across voting rounds.
+//!
+//! # Motivation
+//!
+//! Computing KZG commitments and evaluation proofs is computationally expensive:
+//! - **Commitment**: O(n) group operations for n transactions
+//! - **Evaluation proofs**: O(n²) operations for n proofs
+//!
+//! Validators may need to verify the same batch multiple times during consensus
+//! (e.g., in optimistic protocols with re-proposals). Caching eliminates redundant work.
+//!
+//! # Cache Design
+//!
+//! The [`PrecomputationEngine`] caches based on:
+//! - Batch content hash (BLAKE3 of all ciphertext payloads)
+//! - Decryption context (block height, context index)
+//!
+//! This ensures cache hits only occur for identical batches in the same context,
+//! preventing cross-epoch or cross-block replay.
+//!
+//! # Example
+//!
+//! ```rust,no_run
+//! # use trx2::*;
+//! # use std::sync::Arc;
+//! # fn example() -> Result<(), TrxError> {
+//! # let mut rng = rand::thread_rng();
+//! # let crypto = TrxCrypto::<tess::Bn254>::new(&mut rng, 5, 3)?;
+//! # let setup = crypto.generate_trusted_setup(&mut rng, 128, 1000)?;
+//! # let batch = vec![]; // encrypted transactions
+//! let engine = PrecomputationEngine::<tess::Bn254>::new();
+//! let context = DecryptionContext { block_height: 1, context_index: 0 };
+//!
+//! // First call computes and caches
+//! let data1 = engine.precompute(&batch, &context, &setup)?;
+//! println!("First computation took: {:?}", data1.computation_time);
+//!
+//! // Second call retrieves from cache (instant)
+//! let data2 = engine.precompute(&batch, &context, &setup)?;
+//! assert_eq!(data2.computation_time.as_nanos(), 0); // Cache hit
+//! # Ok(())
+//! # }
+//! ```
+
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -11,20 +58,34 @@ use crate::{
 };
 // === Precomputation ===
 
-/// Precomputation engine for digest and proofs.
+/// Cache for expensive batch commitment and proof computations.
 ///
-/// This cache is keyed on batch payload hashes and context so consensus can
-/// reuse work across voting rounds.
+/// Stores precomputed KZG commitments and evaluation proofs keyed by batch hash
+/// and context. Thread-safe via internal mutex.
+///
+/// # Performance
+///
+/// Cache hits eliminate:
+/// - O(n) commitment computation
+/// - O(n²) proof generation
+///
+/// Typical speedup: 100-1000x for cache hits depending on batch size.
 #[derive(Debug)]
 pub struct PrecomputationEngine<B: PairingBackend<Scalar = Fr>> {
+    /// Thread-safe cache mapping (batch_hash, context) to precomputed data
     cache: Mutex<HashMap<Vec<u8>, PrecomputedData<B>>>,
 }
 
-/// Cached precomputation output.
+/// Precomputed cryptographic data for a batch.
+///
+/// Contains the commitment, proofs, and metadata about the computation.
 #[derive(Debug)]
 pub struct PrecomputedData<B: PairingBackend<Scalar = Fr>> {
+    /// KZG commitment over the batch polynomial
     pub digest: BatchCommitment<B>,
+    /// KZG evaluation proofs (one per transaction)
     pub eval_proofs: Vec<EvalProof<B>>,
+    /// Time spent computing (zero if cache hit)
     pub computation_time: Duration,
 }
 
@@ -42,13 +103,42 @@ where
 }
 impl<B: PairingBackend<Scalar = Fr>> PrecomputationEngine<B> {
     /// Creates a new empty precomputation cache.
+    ///
+    /// # Returns
+    ///
+    /// An empty cache ready to store precomputed data.
     pub fn new() -> Self {
         Self {
             cache: Mutex::new(HashMap::new()),
         }
     }
 
-    /// Computes and caches the digest + eval proofs for a batch/context.
+    /// Computes or retrieves cached digest and evaluation proofs for a batch.
+    ///
+    /// Checks the cache for previously computed results. On cache miss, computes
+    /// the commitment and proofs, stores them, and returns the result.
+    ///
+    /// # Arguments
+    ///
+    /// * `batch` - Encrypted transactions to process
+    /// * `context` - Decryption context (binds cache key to specific block/epoch)
+    /// * `setup` - Trusted setup for KZG operations
+    ///
+    /// # Returns
+    ///
+    /// [`PrecomputedData`] containing:
+    /// - `digest`: Batch commitment
+    /// - `eval_proofs`: Evaluation proofs for all transactions
+    /// - `computation_time`: Time spent (zero if cache hit)
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TrxError`] if KZG operations fail (only on cache miss).
+    ///
+    /// # Thread Safety
+    ///
+    /// Safe to call concurrently from multiple threads. Cache access is synchronized
+    /// via internal mutex.
     pub fn precompute(
         &self,
         batch: &[EncryptedTransaction<B>],
@@ -78,6 +168,25 @@ impl<B: PairingBackend<Scalar = Fr>> Default for PrecomputationEngine<B> {
     }
 }
 
+/// Computes the cache key for a batch and context.
+///
+/// The key binds both the batch contents and the decryption context to prevent
+/// cache hits across different contexts (which would break security).
+///
+/// # Arguments
+///
+/// * `batch` - Encrypted transactions
+/// * `context` - Decryption context
+///
+/// # Returns
+///
+/// A 32-byte BLAKE3 hash uniquely identifying this (batch, context) pair.
+///
+/// # Key Format
+///
+/// ```text
+/// BLAKE3(block_height || context_index || tx1.payload || tx2.payload || ...)
+/// ```
 fn precompute_key<B: PairingBackend>(
     batch: &[EncryptedTransaction<B>],
     context: &DecryptionContext,

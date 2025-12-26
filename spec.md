@@ -31,8 +31,7 @@ pub const THREADS_FOR_CRYPTO: usize = 16;
 
 // Basic cryptographic types
 pub struct PublicKey {
-    pk: G2Element,
-    pk_tau: G2Element,  // pk^τ
+    agg_key: AggregateKey,
 }
 
 pub struct SecretKeyShare {
@@ -41,18 +40,18 @@ pub struct SecretKeyShare {
 }
 
 pub struct EncryptedTransaction {
-    ct_1: G2Element,      // pk^(α·(τ-tg))
-    ct_2: G2Element,      // h^α
-    ct_3: Vec<u8>,       // encrypted payload
-    vk_sig: PublicVerifyKey,
-    signature: Signature,
+    ciphertext: TessCiphertext,
     associated_data: Vec<u8>,
+    // Client Ed25519 signature over hash(ciphertext.payload || associated_data)
+    vk_sig: TxPublicVerifyKey,
+    signature: TxSignature,
 }
 
 pub struct PartialDecryption {
-    pd: G1Element,
+    pd: G2Element,
     validator_id: ValidatorId,
     context: DecryptionContext,
+    tx_index: usize,
 }
 
 pub struct DecryptionContext {
@@ -61,14 +60,21 @@ pub struct DecryptionContext {
 }
 
 pub struct BatchCommitment {
-    com: G1Element,      // g^(κ_dc·f(τ))
+    com: G1Element,      // KZG commitment to batch polynomial
     polynomial_degree: u32,
+}
+
+pub struct EvalProof {
+    point: Fr,
+    value: Fr,
+    proof: G1Element,
 }
 ```
 
 ### 2.2 Setup Structures
 ```rust
 pub struct TrustedSetup {
+    srs: SRS, // KZG parameters
     powers_of_tau: Vec<G1Element>,  // [g, g^τ, ..., g^τ^MAX_BATCH_SIZE]
     powers_of_tau_g2: Vec<G2Element>, // [h, h^τ, ..., h^τ^MAX_BATCH_SIZE]
     kappa_setups: Vec<KappaSetup>,   // Randomized KZG setups
@@ -116,6 +122,7 @@ pub trait TransactionEncryption {
         ek: &PublicKey,
         payload: &[u8],
         associated_data: &[u8],
+        signing_key: &Ed25519SigningKey,
     ) -> Result<EncryptedTransaction>;
     
     /// Verify ciphertext validity
@@ -162,6 +169,8 @@ pub trait BatchDecryption {
         eval_proofs: &[EvalProof],
         batch: &[EncryptedTransaction],
         threshold: u32,
+        setup: &TrustedSetup,
+        commitment: &BatchCommitment,
     ) -> Result<Vec<Transaction>>;
 }
 ```
@@ -295,6 +304,8 @@ pub enum TrxMessage {
     VoteWithDecryption {
         vote: Vote,
         partial_decryption: Option<PartialDecryption>,
+        validator_sig: ValidatorSignature,
+        validator_vk: ValidatorVerifyKey,
     },
     
     // Decryption coordination
@@ -306,6 +317,8 @@ pub enum TrxMessage {
     DecryptionShare {
         block_hash: Hash,
         share: PartialDecryption,
+        validator_sig: ValidatorSignature,
+        validator_vk: ValidatorVerifyKey,
     },
 }
 ```
