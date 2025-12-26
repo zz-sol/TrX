@@ -17,12 +17,17 @@ impl<B: PairingBackend<Scalar = Fr>> BatchCommitment<B> {
         context: &DecryptionContext,
         setup: &TrustedSetup<B>,
     ) -> Result<Self, TrxError> {
+        if batch.len() + 1 > setup.srs.powers_of_g.len() {
+            return Err(TrxError::InvalidConfig(
+                "batch size exceeds available SRS powers".into(),
+            ));
+        }
         let polynomial = batch_polynomial(batch, context);
         let com = KZG::commit_g1(&setup.srs, &polynomial)
             .map_err(|err| TrxError::Backend(err.to_string()))?;
         Ok(Self {
             com,
-            polynomial_degree: batch.len() as u32,
+            polynomial_degree: polynomial.degree() as u32,
         })
     }
 }
@@ -65,6 +70,11 @@ impl<B: PairingBackend<Scalar = Fr>> EvalProof<B> {
         context: &DecryptionContext,
         setup: &TrustedSetup<B>,
     ) -> Result<Vec<Self>, TrxError> {
+        if batch.len() + 1 > setup.srs.powers_of_g.len() {
+            return Err(TrxError::InvalidConfig(
+                "batch size exceeds available SRS powers".into(),
+            ));
+        }
         let polynomial = batch_polynomial(batch, context);
         let mut proofs = Vec::with_capacity(batch.len());
         for (idx, _) in batch.iter().enumerate() {
@@ -81,7 +91,7 @@ impl<B: PairingBackend<Scalar = Fr>> EvalProof<B> {
     }
 }
 
-fn batch_polynomial<B: PairingBackend<Scalar = Fr>>(
+pub(crate) fn batch_polynomial<B: PairingBackend<Scalar = Fr>>(
     batch: &[EncryptedTransaction<B>],
     context: &DecryptionContext,
 ) -> DensePolynomial {

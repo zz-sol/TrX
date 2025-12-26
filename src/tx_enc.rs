@@ -3,12 +3,13 @@ use std::collections::{BTreeMap, HashMap};
 use blake3::Hasher;
 use ed25519_dalek::{Signer, SigningKey};
 use tess::{
-    AggregateKey, Ciphertext as TessCiphertext, CurvePoint, DecryptionResult, Fr, PairingBackend,
-    ThresholdEncryption,
+    AggregateKey, Ciphertext as TessCiphertext, CurvePoint, DecryptionResult, FieldElement, Fr,
+    PairingBackend, PolynomialCommitment, ThresholdEncryption, KZG,
 };
 
 use crate::{
-    BatchCommitment, EvalProof, PublicKey, SecretKeyShare, TrustedSetup, TrxCrypto, TrxError,
+    batch_polynomial, BatchCommitment, EvalProof, PublicKey, SecretKeyShare, TrustedSetup,
+    TrxCrypto, TrxError,
     TxPublicVerifyKey, TxSignature, ValidatorId,
 };
 
@@ -190,7 +191,7 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
     fn combine_and_decrypt(
         &self,
         partial_decryptions: Vec<PartialDecryption<B>>,
-        _eval_proofs: &[EvalProof<B>],
+        eval_proofs: &[EvalProof<B>],
         batch: &[EncryptedTransaction<B>],
         threshold: u32,
         agg_key: &AggregateKey<B>,
@@ -202,9 +203,52 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
             });
         }
 
+        let context = partial_decryptions[0].context.clone();
+        for pd in &partial_decryptions {
+            if pd.context.block_height != context.block_height
+                || pd.context.context_index != context.context_index
+            {
+                return Err(TrxError::InvalidInput(
+                    "partial decryptions have mismatched contexts".into(),
+                ));
+            }
+        }
+
         let parties = agg_key.public_keys.len();
         if parties == 0 {
             return Err(TrxError::InvalidConfig("no parties in agg key".into()));
+        }
+
+        if !eval_proofs.is_empty() || !batch.is_empty() {
+            if eval_proofs.len() != batch.len() {
+                return Err(TrxError::InvalidInput(
+                    "eval proof count must match batch size".into(),
+                ));
+            }
+            let polynomial = batch_polynomial(batch, &context);
+            let commitment = KZG::commit_g1(&agg_key.kzg_params, &polynomial)
+                .map_err(|err| TrxError::Backend(err.to_string()))?;
+            for (idx, proof) in eval_proofs.iter().enumerate() {
+                let expected = Fr::from_u64(idx as u64 + 1);
+                if proof.point != expected {
+                    return Err(TrxError::InvalidInput(
+                        "eval proof point mismatch".into(),
+                    ));
+                }
+                let ok = KZG::verify_g1(
+                    &agg_key.kzg_params,
+                    &commitment,
+                    &proof.point,
+                    &proof.value,
+                    &proof.proof,
+                )
+                .map_err(|err| TrxError::Backend(err.to_string()))?;
+                if !ok {
+                    return Err(TrxError::InvalidInput(
+                        "invalid evaluation proof".into(),
+                    ));
+                }
+            }
         }
 
         let mut grouped: BTreeMap<usize, Vec<tess::PartialDecryption<B>>> = BTreeMap::new();
