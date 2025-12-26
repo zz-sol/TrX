@@ -1,3 +1,5 @@
+use tess::PairingBackend;
+
 /// Batch commitment placeholder produced by hashing.
 #[derive(Debug)]
 pub struct BatchCommitment<B: PairingBackend> {

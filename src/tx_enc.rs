@@ -1,16 +1,9 @@
-use alloc::collections::BTreeMap;
-use alloc::vec::Vec;
-use core::fmt::Debug;
-use core::sync::atomic::AtomicBool;
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::collections::{BTreeMap, HashMap};
 
 use blake3::Hasher;
-use rand_core::RngCore;
 use tess::{
-    AggregateKey, Ciphertext as TessCiphertext, CurvePoint, DecryptionResult, FieldElement, Fr,
-    PairingBackend, PairingEngine, Params, SilentThresholdScheme, ThresholdEncryption,
+    AggregateKey, Ciphertext as TessCiphertext, CurvePoint, DecryptionResult, Fr, PairingBackend,
+    ThresholdEncryption,
 };
 
 use crate::utils::hash_to_scalar;
