@@ -764,6 +764,7 @@ dependencies = [
  "rand_core",
  "solana-bls-signatures",
  "tess",
+ "tracing",
 ]
 
 [[package]]

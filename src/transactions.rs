@@ -41,6 +41,7 @@
 
 use rand_core::RngCore;
 use tess::{Fr, PairingBackend, Params, SilentThresholdScheme, ThresholdEncryption};
+use tracing::instrument;
 
 use crate::{
     DecryptionContext, EncryptedTransaction, PartialDecryption, TrxError, ValidatorSignature,
@@ -114,6 +115,7 @@ impl<B: PairingBackend<Scalar = Fr>> TrxCrypto<B> {
     /// # Ok(())
     /// # }
     /// ```
+    #[instrument(level = "info", skip_all, fields(parties, threshold))]
     pub fn new(rng: &mut impl RngCore, parties: usize, threshold: usize) -> Result<Self, TrxError> {
         if threshold == 0 || threshold >= parties {
             return Err(TrxError::InvalidConfig(

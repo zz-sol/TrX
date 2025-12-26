@@ -54,6 +54,7 @@
 
 use blake3::Hasher;
 use tess::{DensePolynomial, FieldElement, Fr, PairingBackend, PolynomialCommitment, KZG};
+use tracing::instrument;
 
 use crate::utils::scalar_from_hash;
 use crate::{DecryptionContext, EncryptedTransaction, TrustedSetup, TrxError};
@@ -94,6 +95,11 @@ impl<B: PairingBackend<Scalar = Fr>> BatchCommitment<B> {
     ///
     /// Returns [`TrxError::InvalidConfig`] if batch size exceeds the SRS capacity
     /// (i.e., more transactions than available powers of tau).
+    #[instrument(
+        level = "info",
+        skip_all,
+        fields(batch_len = batch.len(), context_index = context.context_index, block_height = context.block_height)
+    )]
     pub fn compute(
         batch: &[EncryptedTransaction<B>],
         context: &DecryptionContext,
@@ -186,6 +192,11 @@ impl<B: PairingBackend<Scalar = Fr>> EvalProof<B> {
     ///
     /// This is a computationally expensive operation (O(n²) for n transactions).
     /// Consider using the precomputation cache for frequently accessed batches.
+    #[instrument(
+        level = "info",
+        skip_all,
+        fields(batch_len = batch.len(), context_index = context.context_index, block_height = context.block_height)
+    )]
     pub fn compute_for_batch(
         batch: &[EncryptedTransaction<B>],
         context: &DecryptionContext,
@@ -295,6 +306,16 @@ fn tx_commitment_scalar<B: PairingBackend<Scalar = Fr>>(
 ///
 /// This check is cryptographically binding under the KZG assumption. If verification
 /// passes, the batch polynomial was correctly constructed from the transactions.
+#[instrument(
+    level = "info",
+    skip_all,
+    fields(
+        batch_len = batch.len(),
+        proofs_len = proofs.len(),
+        context_index = context.context_index,
+        block_height = context.block_height
+    )
+)]
 pub fn verify_eval_proofs<B: PairingBackend<Scalar = Fr>>(
     setup: &TrustedSetup<B>,
     commitment: &BatchCommitment<B>,

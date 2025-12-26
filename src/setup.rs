@@ -54,6 +54,7 @@ use std::sync::Arc;
 
 use rand_core::RngCore;
 use tess::{CurvePoint, FieldElement, Fr, PairingBackend, ThresholdEncryption, SRS};
+use tracing::instrument;
 
 use crate::{PublicKey, SecretKeyShare, TrxCrypto, TrxError, ValidatorId};
 
@@ -95,12 +96,17 @@ impl<B: PairingBackend<Scalar = Fr>> TrustedSetup<B> {
     ///
     /// Returns [`TrxError::InvalidInput`] if the context index exceeds the
     /// number of available kappa contexts.
+    #[instrument(level = "info", skip_all, fields(context_index, max_contexts = self.kappa_setups.len()))]
     pub fn validate_context_index(&self, context_index: u32) -> Result<(), TrxError> {
         if context_index as usize >= self.kappa_setups.len() {
+            let max_msg = if self.kappa_setups.is_empty() {
+                "no kappa contexts available".to_string()
+            } else {
+                format!("exceeds maximum {}", self.kappa_setups.len() - 1)
+            };
             return Err(TrxError::InvalidInput(format!(
-                "context_index {} exceeds maximum {} (from trusted setup)",
-                context_index,
-                self.kappa_setups.len() - 1
+                "context_index {} {} (from trusted setup)",
+                context_index, max_msg
             )));
         }
         Ok(())
@@ -138,6 +144,7 @@ impl<B: PairingBackend> KappaSetup<B> {
     /// # Thread Safety
     ///
     /// Safe to call concurrently from multiple threads. Only one caller will succeed.
+    #[instrument(level = "info", skip_all, fields(index = self.index))]
     pub fn try_use(&self) -> Result<(), TrxError> {
         use core::sync::atomic::Ordering;
         if self.used.swap(true, Ordering::SeqCst) {
@@ -154,6 +161,7 @@ impl<B: PairingBackend> KappaSetup<B> {
     /// # Returns
     ///
     /// `true` if the context has been consumed, `false` otherwise.
+    #[instrument(level = "info", skip_all, fields(index = self.index))]
     pub fn is_used(&self) -> bool {
         use core::sync::atomic::Ordering;
         self.used.load(Ordering::SeqCst)
@@ -271,6 +279,7 @@ pub trait SetupManager<B: PairingBackend<Scalar = Fr>> {
 }
 
 impl<B: PairingBackend<Scalar = Fr>> SetupManager<B> for TrxCrypto<B> {
+    #[instrument(level = "info", skip_all, fields(max_batch_size, max_contexts))]
     fn generate_trusted_setup(
         &self,
         rng: &mut impl RngCore,
@@ -310,6 +319,11 @@ impl<B: PairingBackend<Scalar = Fr>> SetupManager<B> for TrxCrypto<B> {
         })
     }
 
+    #[instrument(
+        level = "info",
+        skip_all,
+        fields(num_validators = validators.len(), threshold)
+    )]
     fn run_dkg(
         &self,
         rng: &mut impl RngCore,
@@ -359,6 +373,15 @@ impl<B: PairingBackend<Scalar = Fr>> SetupManager<B> for TrxCrypto<B> {
         })
     }
 
+    #[instrument(
+        level = "info",
+        skip_all,
+        fields(
+            powers_g1 = setup.powers_of_tau.len(),
+            powers_g2 = setup.powers_of_tau_g2.len(),
+            kappa_len = setup.kappa_setups.len()
+        )
+    )]
     fn verify_setup(&self, setup: &TrustedSetup<B>) -> Result<(), TrxError> {
         if setup.powers_of_tau.is_empty() || setup.powers_of_tau_g2.is_empty() {
             return Err(TrxError::InvalidInput(

@@ -42,6 +42,7 @@
 //! - Spam prevention mechanisms
 
 use tess::{Fr, PairingBackend};
+use tracing::instrument;
 
 use crate::{EncryptedTransaction, TransactionEncryption, TrxCrypto, TrxError};
 
@@ -67,6 +68,7 @@ impl<B: PairingBackend<Scalar = Fr>> EncryptedMempool<B> {
     /// # Returns
     ///
     /// An empty mempool with the specified capacity limit.
+    #[instrument(level = "info", skip_all, fields(max_size))]
     pub fn new(max_size: usize) -> Self {
         Self {
             encrypted_txs: Vec::new(),
@@ -93,6 +95,7 @@ impl<B: PairingBackend<Scalar = Fr>> EncryptedMempool<B> {
     /// Checks:
     /// - Ciphertext payload is non-empty
     /// - Ed25519 signature is valid over (ciphertext || associated_data)
+    #[instrument(level = "info", skip_all, fields(current_len = self.encrypted_txs.len(), max_size = self.max_size))]
     pub fn add_encrypted_tx(&mut self, tx: EncryptedTransaction<B>) -> Result<(), TrxError> {
         TrxCrypto::<B>::verify_ciphertext(&tx)?;
         if self.encrypted_txs.len() >= self.max_size {
@@ -120,6 +123,7 @@ impl<B: PairingBackend<Scalar = Fr>> EncryptedMempool<B> {
     ///
     /// This method mutates the mempool by removing the extracted transactions.
     /// If you need to peek without removing, clone the transactions first.
+    #[instrument(level = "info", skip_all, fields(requested = max_size, available = self.encrypted_txs.len()))]
     pub fn get_batch(&mut self, max_size: usize) -> Vec<EncryptedTransaction<B>> {
         let take = max_size.min(self.encrypted_txs.len());
         self.encrypted_txs.drain(0..take).collect()

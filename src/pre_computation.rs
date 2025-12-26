@@ -51,6 +51,7 @@ use std::time::{Duration, Instant};
 
 use blake3::Hasher;
 use tess::{Fr, PairingBackend};
+use tracing::instrument;
 
 use crate::{
     BatchCommitment, BatchDecryption, DecryptionContext, EncryptedTransaction, EvalProof,
@@ -107,6 +108,7 @@ impl<B: PairingBackend<Scalar = Fr>> PrecomputationEngine<B> {
     /// # Returns
     ///
     /// An empty cache ready to store precomputed data.
+    #[instrument(level = "info", skip_all)]
     pub fn new() -> Self {
         Self {
             cache: Mutex::new(HashMap::new()),
@@ -139,6 +141,11 @@ impl<B: PairingBackend<Scalar = Fr>> PrecomputationEngine<B> {
     ///
     /// Safe to call concurrently from multiple threads. Cache access is synchronized
     /// via internal mutex.
+    #[instrument(
+        level = "info",
+        skip_all,
+        fields(batch_len = batch.len(), context_index = context.context_index, block_height = context.block_height)
+    )]
     pub fn precompute(
         &self,
         batch: &[EncryptedTransaction<B>],

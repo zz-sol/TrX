@@ -46,6 +46,7 @@
 use blake3::Hasher;
 use solana_bls_signatures::{pubkey::VerifiablePubkey, SecretKey};
 use tess::{CurvePoint, PairingBackend};
+use tracing::instrument;
 
 use crate::{PartialDecryption, TrxError};
 
@@ -85,6 +86,11 @@ pub type ValidatorSignature = solana_bls_signatures::SignatureCompressed;
 /// ```text
 /// BLAKE3("trx:validator-vote:v1" || vote || optional_pd_data)
 /// ```
+#[instrument(
+    level = "info",
+    skip_all,
+    fields(vote_len = vote.len(), has_pd = partial_decryption.is_some())
+)]
 pub fn sign_validator_vote<B: PairingBackend>(
     signing_key: &ValidatorSigningKey,
     vote: &[u8],
@@ -106,6 +112,11 @@ pub fn sign_validator_vote<B: PairingBackend>(
 /// # Errors
 ///
 /// Returns [`TrxError::InvalidInput`] if signature verification fails.
+#[instrument(
+    level = "info",
+    skip_all,
+    fields(vote_len = vote.len(), has_pd = partial_decryption.is_some())
+)]
 pub fn verify_validator_vote<B: PairingBackend>(
     verify_key: &ValidatorVerifyKey,
     signature: &ValidatorSignature,
@@ -142,6 +153,11 @@ pub fn verify_validator_vote<B: PairingBackend>(
 /// ```text
 /// BLAKE3("trx:decryption-share:v1" || block_hash || share_data)
 /// ```
+#[instrument(
+    level = "info",
+    skip_all,
+    fields(block_hash_len = block_hash.len(), validator_id = share.validator_id, tx_index = share.tx_index)
+)]
 pub fn sign_validator_share<B: PairingBackend>(
     signing_key: &ValidatorSigningKey,
     block_hash: &[u8],
@@ -163,6 +179,11 @@ pub fn sign_validator_share<B: PairingBackend>(
 /// # Errors
 ///
 /// Returns [`TrxError::InvalidInput`] if signature verification fails.
+#[instrument(
+    level = "info",
+    skip_all,
+    fields(block_hash_len = block_hash.len(), validator_id = share.validator_id, tx_index = share.tx_index)
+)]
 pub fn verify_validator_share<B: PairingBackend>(
     verify_key: &ValidatorVerifyKey,
     signature: &ValidatorSignature,

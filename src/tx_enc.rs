@@ -58,6 +58,7 @@ use tess::{
     AggregateKey, Ciphertext as TessCiphertext, CurvePoint, DecryptionResult, Fr, PairingBackend,
     ThresholdEncryption,
 };
+use tracing::instrument;
 
 use crate::{
     verify_eval_proofs, BatchCommitment, EvalProof, PublicKey, SecretKeyShare, TrustedSetup,
@@ -113,6 +114,11 @@ pub trait TransactionEncryption<B: PairingBackend<Scalar = Fr>> {
 }
 
 impl<B: PairingBackend<Scalar = Fr>> TransactionEncryption<B> for TrxCrypto<B> {
+    #[instrument(
+        level = "info",
+        skip_all,
+        fields(payload_len = payload.len(), associated_len = associated_data.len())
+    )]
     fn encrypt_transaction(
         &self,
         ek: &PublicKey<B>,
@@ -136,6 +142,11 @@ impl<B: PairingBackend<Scalar = Fr>> TransactionEncryption<B> for TrxCrypto<B> {
         })
     }
 
+    #[instrument(
+        level = "info",
+        skip_all,
+        fields(payload_len = ct.ciphertext.payload.len(), associated_len = ct.associated_data.len())
+    )]
     fn verify_ciphertext(ct: &EncryptedTransaction<B>) -> Result<(), TrxError> {
         if ct.ciphertext.payload.is_empty() {
             return Err(TrxError::InvalidInput(
@@ -378,6 +389,11 @@ pub trait BatchDecryption<B: PairingBackend<Scalar = Fr>> {
 // === TrX crypto adapter ===
 
 impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
+    #[instrument(
+        level = "info",
+        skip_all,
+        fields(batch_len = batch.len(), context_index = context.context_index, block_height = context.block_height)
+    )]
     fn compute_digest(
         batch: &[EncryptedTransaction<B>],
         context: &DecryptionContext,
@@ -386,6 +402,11 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
         BatchCommitment::compute(batch, context, setup)
     }
 
+    #[instrument(
+        level = "info",
+        skip_all,
+        fields(tx_index, validator_id = sk_share.index)
+    )]
     fn generate_partial_decryption(
         sk_share: &SecretKeyShare<B>,
         _commitment: &BatchCommitment<B>,
@@ -402,6 +423,7 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
         })
     }
 
+    #[instrument(level = "info", skip_all, fields(validator_id = pd.validator_id))]
     fn verify_partial_decryption(
         pd: &PartialDecryption<B>,
         _commitment: &BatchCommitment<B>,
@@ -413,6 +435,11 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
         Ok(())
     }
 
+    #[instrument(
+        level = "info",
+        skip_all,
+        fields(batch_len = batch.len(), context_index = context.context_index, block_height = context.block_height)
+    )]
     fn compute_eval_proofs(
         batch: &[EncryptedTransaction<B>],
         context: &DecryptionContext,

@@ -371,3 +371,287 @@ fn test_precomputation_cache_isolation() {
         data3.digest.polynomial_degree
     ); // Same result
 }
+
+#[test]
+fn test_invalid_threshold_configuration() {
+    let mut rng = thread_rng();
+
+    // Threshold = 0 should fail
+    let result = TrxCrypto::<PairingEngine>::new(&mut rng, 5, 0);
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        TrxError::InvalidConfig(msg) => {
+            assert!(msg.contains("threshold"));
+        }
+        _ => panic!("Expected InvalidConfig error"),
+    }
+
+    // Threshold >= parties should fail
+    let result = TrxCrypto::<PairingEngine>::new(&mut rng, 5, 5);
+    assert!(result.is_err());
+
+    let result = TrxCrypto::<PairingEngine>::new(&mut rng, 5, 6);
+    assert!(result.is_err());
+
+    // Valid threshold (used in other tests) should succeed
+    let result = TrxCrypto::<PairingEngine>::new(&mut rng, 4, 2);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_empty_trusted_setup_validation() {
+    let mut rng = thread_rng();
+    let parties = 4;
+    let threshold = 2;
+    let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
+
+    // Generate setup with 0 kappa contexts should work (edge case)
+    let setup = trx.generate_trusted_setup(&mut rng, parties, 0).unwrap();
+
+    // Any context_index should fail for empty kappa_setups
+    let result = setup.validate_context_index(0);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_context_index_in_eval_proofs() {
+    let mut rng = thread_rng();
+    let parties = 4;
+    let threshold = 2;
+    let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
+    let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
+
+    // Create setup with only 2 kappa contexts
+    let setup = trx.generate_trusted_setup(&mut rng, parties, 2).unwrap();
+    let setup_arc = std::sync::Arc::new(setup);
+    let validators: Vec<ValidatorId> = (0..parties as u32).collect();
+    let epoch = trx
+        .run_dkg(&mut rng, &validators, threshold as u32, setup_arc.clone())
+        .unwrap();
+
+    let batch = vec![trx
+        .encrypt_transaction(&epoch.public_key, b"test", b"", &client_key)
+        .unwrap()];
+
+    // Valid context should work for eval proofs
+    let valid_context = DecryptionContext {
+        block_height: 1,
+        context_index: 0,
+    };
+    let result =
+        TrxCrypto::<PairingEngine>::compute_eval_proofs(&batch, &valid_context, &setup_arc);
+    assert!(result.is_ok());
+
+    // Invalid context should fail for eval proofs
+    let invalid_context = DecryptionContext {
+        block_height: 1,
+        context_index: 5,
+    };
+    let result =
+        TrxCrypto::<PairingEngine>::compute_eval_proofs(&batch, &invalid_context, &setup_arc);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_not_enough_shares_error() {
+    let mut rng = thread_rng();
+    let parties = 4;
+    let threshold = 2;
+    let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
+    let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
+    let setup = trx.generate_trusted_setup(&mut rng, parties, 2).unwrap();
+    let setup_arc = std::sync::Arc::new(setup);
+    let validators: Vec<ValidatorId> = (0..parties as u32).collect();
+    let epoch = trx
+        .run_dkg(&mut rng, &validators, threshold as u32, setup_arc.clone())
+        .unwrap();
+
+    let context = DecryptionContext {
+        block_height: 1,
+        context_index: 0,
+    };
+
+    let batch = vec![trx
+        .encrypt_transaction(&epoch.public_key, b"test", b"", &client_key)
+        .unwrap()];
+
+    let commitment =
+        TrxCrypto::<PairingEngine>::compute_digest(&batch, &context, &setup_arc).unwrap();
+    let eval_proofs =
+        TrxCrypto::<PairingEngine>::compute_eval_proofs(&batch, &context, &setup_arc).unwrap();
+
+    // Provide only 1 partial decryption (less than threshold of 2)
+    let share = epoch.validator_shares.get(&0).unwrap();
+    let pd = TrxCrypto::<PairingEngine>::generate_partial_decryption(
+        share,
+        &commitment,
+        &context,
+        0,
+        &batch[0].ciphertext,
+    )
+    .unwrap();
+
+    let result = trx.combine_and_decrypt(
+        vec![pd],
+        &eval_proofs,
+        &batch,
+        threshold as u32,
+        &setup_arc,
+        &commitment,
+        &epoch.public_key.agg_key,
+    );
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        TrxError::NotEnoughShares { required, provided } => {
+            assert_eq!(required, threshold);
+            assert_eq!(provided, 1);
+        }
+        _ => panic!("Expected NotEnoughShares error"),
+    }
+}
+
+#[test]
+fn test_mempool_capacity_enforcement() {
+    let mut rng = thread_rng();
+    let parties = 4;
+    let threshold = 2;
+    let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
+    let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
+    let setup = trx.generate_trusted_setup(&mut rng, parties, 1).unwrap();
+    let setup_arc = std::sync::Arc::new(setup);
+    let validators: Vec<ValidatorId> = (0..parties as u32).collect();
+    let epoch = trx
+        .run_dkg(&mut rng, &validators, threshold as u32, setup_arc)
+        .unwrap();
+
+    // Create mempool with capacity of 2
+    let mut mempool = EncryptedMempool::<PairingEngine>::new(2);
+
+    let tx1 = trx
+        .encrypt_transaction(&epoch.public_key, b"one", b"", &client_key)
+        .unwrap();
+    let tx2 = trx
+        .encrypt_transaction(&epoch.public_key, b"two", b"", &client_key)
+        .unwrap();
+    let tx3 = trx
+        .encrypt_transaction(&epoch.public_key, b"three", b"", &client_key)
+        .unwrap();
+
+    // First two transactions should succeed
+    assert!(mempool.add_encrypted_tx(tx1).is_ok());
+    assert!(mempool.add_encrypted_tx(tx2).is_ok());
+
+    // Third transaction should fail (mempool full)
+    let result = mempool.add_encrypted_tx(tx3);
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        TrxError::InvalidConfig(msg) => {
+            assert!(msg.contains("mempool full"));
+        }
+        _ => panic!("Expected InvalidConfig error"),
+    }
+}
+
+#[test]
+fn test_concurrent_kappa_usage() {
+    use std::sync::Arc;
+    use std::thread;
+
+    let mut rng = thread_rng();
+    let parties = 4;
+    let threshold = 2;
+    let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
+
+    let setup = Arc::new(trx.generate_trusted_setup(&mut rng, parties, 5).unwrap());
+
+    // Spawn multiple threads trying to use the same kappa context
+    let mut handles = vec![];
+    for _ in 0..10 {
+        let setup_clone = setup.clone();
+        let handle = thread::spawn(move || setup_clone.kappa_setups[0].try_use());
+        handles.push(handle);
+    }
+
+    // Collect results
+    let results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+
+    // Exactly one thread should succeed
+    let successes = results.iter().filter(|r| r.is_ok()).count();
+    let failures = results.iter().filter(|r| r.is_err()).count();
+
+    assert_eq!(
+        successes, 1,
+        "Exactly one thread should successfully use the kappa context"
+    );
+    assert_eq!(failures, 9, "Nine threads should fail");
+}
+
+#[test]
+fn test_batch_size_exceeds_srs() {
+    let mut rng = thread_rng();
+    let parties = 4;
+    let threshold = 2;
+    let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
+    let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
+
+    // Create setup with very small SRS (only 2 transactions)
+    let setup = trx.generate_trusted_setup(&mut rng, 2, 5).unwrap();
+    let setup_arc = std::sync::Arc::new(setup);
+    let validators: Vec<ValidatorId> = (0..parties as u32).collect();
+    let epoch = trx
+        .run_dkg(&mut rng, &validators, threshold as u32, setup_arc.clone())
+        .unwrap();
+
+    // Create batch with 3 transactions (exceeds SRS capacity)
+    let batch = vec![
+        trx.encrypt_transaction(&epoch.public_key, b"a", b"", &client_key)
+            .unwrap(),
+        trx.encrypt_transaction(&epoch.public_key, b"b", b"", &client_key)
+            .unwrap(),
+        trx.encrypt_transaction(&epoch.public_key, b"c", b"", &client_key)
+            .unwrap(),
+    ];
+
+    let context = DecryptionContext {
+        block_height: 1,
+        context_index: 0,
+    };
+
+    // Should fail due to batch size exceeding SRS powers
+    let result = TrxCrypto::<PairingEngine>::compute_digest(&batch, &context, &setup_arc);
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        TrxError::InvalidConfig(msg) => {
+            assert!(msg.contains("batch size exceeds"));
+        }
+        _ => panic!("Expected InvalidConfig error"),
+    }
+}
+
+#[test]
+fn test_empty_batch_handling() {
+    let mut rng = thread_rng();
+    let parties = 4;
+    let threshold = 2;
+    let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
+
+    let setup = trx.generate_trusted_setup(&mut rng, parties, 5).unwrap();
+    let setup_arc = std::sync::Arc::new(setup);
+
+    let context = DecryptionContext {
+        block_height: 1,
+        context_index: 0,
+    };
+
+    // Empty batch should work for digest computation
+    let empty_batch: Vec<EncryptedTransaction<PairingEngine>> = vec![];
+    let result = TrxCrypto::<PairingEngine>::compute_digest(&empty_batch, &context, &setup_arc);
+    assert!(result.is_ok());
+
+    // Empty batch should work for eval proofs
+    let result =
+        TrxCrypto::<PairingEngine>::compute_eval_proofs(&empty_batch, &context, &setup_arc);
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap().len(), 0);
+}
