@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use blake3::Hasher;
+use ed25519_dalek::{Signer, SigningKey};
 use tess::{
     AggregateKey, Ciphertext as TessCiphertext, CurvePoint, DecryptionResult, Fr, PairingBackend,
     ThresholdEncryption,
@@ -8,8 +9,8 @@ use tess::{
 
 use crate::utils::hash_to_scalar;
 use crate::{
-    BatchCommitment, EvalProof, PublicKey, PublicVerifyKey, SecretKeyShare, Signature,
-    TrustedSetup, TrxCrypto, TrxError, ValidatorId,
+    BatchCommitment, EvalProof, PublicKey, SecretKeyShare, TrustedSetup, TrxCrypto, TrxError,
+    TxPublicVerifyKey, TxSignature, ValidatorId,
 };
 
 /// Encryption interface for TrX transactions.
@@ -19,6 +20,7 @@ pub trait TransactionEncryption<B: PairingBackend<Scalar = Fr>> {
         ek: &PublicKey<B>,
         payload: &[u8],
         associated_data: &[u8],
+        signing_key: &SigningKey,
     ) -> Result<EncryptedTransaction<B>, TrxError>;
 
     fn verify_ciphertext(ct: &EncryptedTransaction<B>) -> Result<(), TrxError>;
@@ -30,17 +32,21 @@ impl<B: PairingBackend<Scalar = Fr>> TransactionEncryption<B> for TrxCrypto<B> {
         ek: &PublicKey<B>,
         payload: &[u8],
         associated_data: &[u8],
+        signing_key: &SigningKey,
     ) -> Result<EncryptedTransaction<B>, TrxError> {
         let mut rng = rand::thread_rng();
         let ciphertext =
             self.scheme
                 .encrypt(&mut rng, &ek.agg_key, &self.params, self.threshold, payload)?;
+        let signing_message = client_signature_message(&ciphertext, associated_data);
+        let signature = signing_key.sign(signing_message.as_ref());
+        let vk_sig = signing_key.verifying_key();
 
         Ok(EncryptedTransaction {
             ciphertext,
             associated_data: associated_data.to_vec(),
-            signature: Signature(Vec::new()),
-            vk_sig: PublicVerifyKey(Vec::new()),
+            signature,
+            vk_sig,
         })
     }
 
@@ -50,6 +56,10 @@ impl<B: PairingBackend<Scalar = Fr>> TransactionEncryption<B> for TrxCrypto<B> {
                 "ciphertext payload cannot be empty".into(),
             ));
         }
+        let signing_message = client_signature_message(&ct.ciphertext, &ct.associated_data);
+        ct.vk_sig
+            .verify_strict(signing_message.as_ref(), &ct.signature)
+            .map_err(|err| TrxError::InvalidInput(format!("invalid client signature: {err}")))?;
         Ok(())
     }
 }
@@ -59,8 +69,8 @@ impl<B: PairingBackend<Scalar = Fr>> TransactionEncryption<B> for TrxCrypto<B> {
 pub struct EncryptedTransaction<B: PairingBackend> {
     pub ciphertext: TessCiphertext<B>,
     pub associated_data: Vec<u8>,
-    pub signature: Signature,
-    pub vk_sig: PublicVerifyKey,
+    pub signature: TxSignature,
+    pub vk_sig: TxPublicVerifyKey,
 }
 
 /// Partial decryption for a transaction in a batch.
@@ -77,6 +87,19 @@ pub struct PartialDecryption<B: PairingBackend> {
 pub struct DecryptionContext {
     pub block_height: u64,
     pub context_index: u32,
+}
+
+fn client_signature_message<B: PairingBackend>(
+    ciphertext: &TessCiphertext<B>,
+    associated_data: &[u8],
+) -> [u8; 32] {
+    let mut hasher = Hasher::new();
+    hasher.update(&ciphertext.payload);
+    hasher.update(associated_data);
+    let digest = hasher.finalize();
+    let mut output = [0u8; 32];
+    output.copy_from_slice(digest.as_bytes());
+    output
 }
 
 // === Traits ===

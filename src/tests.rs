@@ -1,5 +1,8 @@
-use super::*;
+use ed25519_dalek::SigningKey;
 use rand::thread_rng;
+use tess::{PairingEngine, ThresholdEncryption};
+
+use super::*;
 
 #[test]
 fn happy_path_encrypt_decrypt() {
@@ -7,13 +10,16 @@ fn happy_path_encrypt_decrypt() {
     let parties = 4;
     let threshold = 2;
     let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
+    let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
     let keys = trx.scheme.keygen(&mut rng, parties, &trx.params).unwrap();
     let agg_key = trx
         .scheme
         .aggregate_public_key(&keys.public_keys, &trx.params, parties)
         .unwrap();
     let pk = PublicKey { agg_key };
-    let encrypted = trx.encrypt_transaction(&pk, b"payload", b"aad").unwrap();
+    let encrypted = trx
+        .encrypt_transaction(&pk, b"payload", b"aad", &client_key)
+        .unwrap();
 
     let share_count = threshold + 1;
     let partials: Vec<tess::PartialDecryption<PairingEngine>> = keys
@@ -44,6 +50,7 @@ fn batch_decrypt_flow() {
     let parties = 4;
     let threshold = 2;
     let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
+    let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
     let setup = trx.generate_trusted_setup(&mut rng, parties, 2).unwrap();
     let setup = std::sync::Arc::new(setup);
     let validators: Vec<ValidatorId> = (0..parties as u32).collect();
@@ -57,9 +64,9 @@ fn batch_decrypt_flow() {
     };
 
     let batch = vec![
-        trx.encrypt_transaction(&epoch.public_key, b"a", b"")
+        trx.encrypt_transaction(&epoch.public_key, b"a", b"", &client_key)
             .unwrap(),
-        trx.encrypt_transaction(&epoch.public_key, b"b", b"")
+        trx.encrypt_transaction(&epoch.public_key, b"b", b"", &client_key)
             .unwrap(),
     ];
 
@@ -103,6 +110,7 @@ fn mempool_roundtrip() {
     let parties = 4;
     let threshold = 2;
     let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
+    let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
     let setup = trx.generate_trusted_setup(&mut rng, parties, 1).unwrap();
     let setup = std::sync::Arc::new(setup);
     let validators: Vec<ValidatorId> = (0..parties as u32).collect();
@@ -112,10 +120,10 @@ fn mempool_roundtrip() {
 
     let mut mempool = EncryptedMempool::<PairingEngine>::new(2);
     let tx1 = trx
-        .encrypt_transaction(&epoch.public_key, b"one", b"")
+        .encrypt_transaction(&epoch.public_key, b"one", b"", &client_key)
         .unwrap();
     let tx2 = trx
-        .encrypt_transaction(&epoch.public_key, b"two", b"")
+        .encrypt_transaction(&epoch.public_key, b"two", b"", &client_key)
         .unwrap();
     mempool.add_encrypted_tx(tx1).unwrap();
     mempool.add_encrypted_tx(tx2).unwrap();

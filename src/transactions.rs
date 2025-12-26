@@ -1,7 +1,10 @@
 use rand_core::RngCore;
 use tess::{Fr, PairingBackend, Params, SilentThresholdScheme, ThresholdEncryption};
 
-use crate::{DecryptionContext, EncryptedTransaction, PartialDecryption, TrxError};
+use crate::{
+    DecryptionContext, EncryptedTransaction, PartialDecryption, TrxError, ValidatorSignature,
+    ValidatorVerifyKey,
+};
 
 pub type ValidatorId = u32;
 
@@ -47,6 +50,8 @@ pub enum TrxMessage<B: PairingBackend> {
     VoteWithDecryption {
         vote: Vec<u8>,
         partial_decryption: Option<PartialDecryption<B>>,
+        validator_sig: ValidatorSignature,
+        validator_vk: ValidatorVerifyKey,
     },
     RequestDecryptionShares {
         block_hash: Vec<u8>,
@@ -55,5 +60,7 @@ pub enum TrxMessage<B: PairingBackend> {
     DecryptionShare {
         block_hash: Vec<u8>,
         share: PartialDecryption<B>,
+        validator_sig: ValidatorSignature,
+        validator_vk: ValidatorVerifyKey,
     },
 }
