@@ -24,12 +24,12 @@
 //! # Example
 //!
 //! ```rust,no_run
-//! # use trx2::*;
+//! # use trx::*;
 //! # fn example() -> Result<(), TrxError> {
 //! let mut rng = rand::thread_rng();
 //!
 //! // Initialize crypto engine
-//! let crypto = TrxCrypto::<tess::Bn254>::new(&mut rng, 5, 3)?;
+//! let crypto = TrxCrypto::<tess::PairingEngine>::new(&mut rng, 5, 3)?;
 //!
 //! // Crypto engine implements all traits
 //! // - TransactionEncryption: for client operations
@@ -105,12 +105,12 @@ impl<B: PairingBackend<Scalar = Fr>> TrxCrypto<B> {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # use trx2::*;
+    /// # use trx::*;
     /// # fn example() -> Result<(), TrxError> {
     /// let mut rng = rand::thread_rng();
     ///
     /// // 5 validators, need 3 to decrypt (60% threshold)
-    /// let crypto = TrxCrypto::<tess::Bn254>::new(&mut rng, 5, 3)?;
+    /// let crypto = TrxCrypto::<tess::PairingEngine>::new(&mut rng, 5, 3)?;
     /// # Ok(())
     /// # }
     /// ```

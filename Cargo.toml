@@ -1,7 +1,7 @@
 [package]
 name = "trx"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
 tess = { git = "https://github.com/zz-sol/Tess", features = ["blst"] }

@@ -24,14 +24,14 @@
 //! # Example
 //!
 //! ```rust,no_run
-//! # use trx2::*;
+//! # use trx::*;
 //! # use std::sync::Arc;
 //! # fn example() -> Result<(), TrxError> {
 //! # let mut rng = rand::thread_rng();
-//! # let crypto = TrxCrypto::<tess::Bn254>::new(&mut rng, 5, 3)?;
+//! # let crypto = TrxCrypto::<tess::PairingEngine>::new(&mut rng, 5, 3)?;
 //! # let setup = crypto.generate_trusted_setup(&mut rng, 128, 1000)?;
 //! # let batch = vec![]; // encrypted transactions
-//! let engine = PrecomputationEngine::<tess::Bn254>::new();
+//! let engine = PrecomputationEngine::<tess::PairingEngine>::new();
 //! let context = DecryptionContext { block_height: 1, context_index: 0 };
 //!
 //! // First call computes and caches
@@ -146,9 +146,19 @@ impl<B: PairingBackend<Scalar = Fr>> PrecomputationEngine<B> {
         setup: &TrustedSetup<B>,
     ) -> Result<PrecomputedData<B>, TrxError> {
         let key = precompute_key(batch, context);
-        if let Some(cached) = self.cache.lock().unwrap().get(&key).cloned() {
-            return Ok(cached);
+
+        // Check cache (handle poisoned mutex gracefully)
+        {
+            let cache = self
+                .cache
+                .lock()
+                .map_err(|_| TrxError::Backend("precomputation cache lock poisoned".into()))?;
+            if let Some(cached) = cache.get(&key).cloned() {
+                return Ok(cached);
+            }
         }
+
+        // Cache miss - compute and store
         let start = Instant::now();
         let digest = TrxCrypto::<B>::compute_digest(batch, context, setup)?;
         let eval_proofs = TrxCrypto::<B>::compute_eval_proofs(batch, context, setup)?;
@@ -157,7 +167,13 @@ impl<B: PairingBackend<Scalar = Fr>> PrecomputationEngine<B> {
             eval_proofs,
             computation_time: start.elapsed(),
         };
-        self.cache.lock().unwrap().insert(key, data.clone());
+
+        // Store in cache (handle poisoned mutex gracefully)
+        self.cache
+            .lock()
+            .map_err(|_| TrxError::Backend("precomputation cache lock poisoned".into()))?
+            .insert(key, data.clone());
+
         Ok(data)
     }
 }

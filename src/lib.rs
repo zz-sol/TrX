@@ -62,7 +62,7 @@
 //! # Quick Start
 //!
 //! ```rust,no_run
-//! use trx2::*;
+//! use trx::*;
 //! use ed25519_dalek::SigningKey;
 //! use std::sync::Arc;
 //! # use rand::thread_rng;
@@ -71,7 +71,7 @@
 //! let mut rng = thread_rng();
 //!
 //! // 1. Initialize crypto engine (5 validators, 3 threshold)
-//! let crypto = TrxCrypto::<tess::Bn254>::new(&mut rng, 5, 3)?;
+//! let crypto = TrxCrypto::<tess::PairingEngine>::new(&mut rng, 5, 3)?;
 //!
 //! // 2. Generate trusted setup
 //! let setup = crypto.generate_trusted_setup(&mut rng, 128, 1000)?;
@@ -92,7 +92,7 @@
 //! // 5. Validators decrypt batch
 //! let batch = vec![encrypted_tx];
 //! let context = DecryptionContext { block_height: 1, context_index: 0 };
-//! let commitment = TrxCrypto::<tess::Bn254>::compute_digest(&batch, &context, &epoch_keys.setup)?;
+//! let commitment = TrxCrypto::<tess::PairingEngine>::compute_digest(&batch, &context, &epoch_keys.setup)?;
 //! // ... generate partial decryptions, then combine to decrypt
 //! # Ok(())
 //! # }

@@ -29,30 +29,31 @@
 //! # Example
 //!
 //! ```rust,no_run
-//! # use trx2::*;
+//! # use trx::*;
 //! # use std::sync::Arc;
 //! # fn example() -> Result<(), TrxError> {
 //! # let mut rng = rand::thread_rng();
-//! # let crypto = TrxCrypto::<tess::Bn254>::new(&mut rng, 5, 3)?;
+//! # let crypto = TrxCrypto::<tess::PairingEngine>::new(&mut rng, 5, 3)?;
 //! # let setup = crypto.generate_trusted_setup(&mut rng, 128, 1000)?;
-//! # let epoch_keys = crypto.run_dkg(&mut rng, &vec![0,1,2,3,4], 3, Arc::new(setup.clone()))?;
+//! # let setup_arc = Arc::new(setup);
+//! # let epoch_keys = crypto.run_dkg(&mut rng, &vec![0,1,2,3,4], 3, setup_arc.clone())?;
 //! # let batch = vec![]; // encrypted transactions
 //! let context = DecryptionContext { block_height: 1, context_index: 0 };
 //!
 //! // Compute batch commitment
-//! let commitment = BatchCommitment::compute(&batch, &context, &setup)?;
+//! let commitment = BatchCommitment::compute(&batch, &context, &setup_arc)?;
 //!
 //! // Generate evaluation proofs
-//! let proofs = EvalProof::compute_for_batch(&batch, &context, &setup)?;
+//! let proofs = EvalProof::compute_for_batch(&batch, &context, &setup_arc)?;
 //!
 //! // Verify proofs
-//! verify_eval_proofs(&setup, &commitment, &batch, &context, &proofs)?;
+//! verify_eval_proofs(&setup_arc, &commitment, &batch, &context, &proofs)?;
 //! # Ok(())
 //! # }
 //! ```
 
 use blake3::Hasher;
-use tess::{DensePolynomial, FieldElement, Fr, KZG, PairingBackend, PolynomialCommitment};
+use tess::{DensePolynomial, FieldElement, Fr, PairingBackend, PolynomialCommitment, KZG};
 
 use crate::utils::scalar_from_hash;
 use crate::{DecryptionContext, EncryptedTransaction, TrustedSetup, TrxError};
@@ -98,6 +99,9 @@ impl<B: PairingBackend<Scalar = Fr>> BatchCommitment<B> {
         context: &DecryptionContext,
         setup: &TrustedSetup<B>,
     ) -> Result<Self, TrxError> {
+        // Validate context index is within bounds
+        setup.validate_context_index(context.context_index)?;
+
         if batch.len() + 1 > setup.srs.powers_of_g.len() {
             return Err(TrxError::InvalidConfig(
                 "batch size exceeds available SRS powers".into(),
@@ -187,6 +191,9 @@ impl<B: PairingBackend<Scalar = Fr>> EvalProof<B> {
         context: &DecryptionContext,
         setup: &TrustedSetup<B>,
     ) -> Result<Vec<Self>, TrxError> {
+        // Validate context index is within bounds
+        setup.validate_context_index(context.context_index)?;
+
         if batch.len() + 1 > setup.srs.powers_of_g.len() {
             return Err(TrxError::InvalidConfig(
                 "batch size exceeds available SRS powers".into(),

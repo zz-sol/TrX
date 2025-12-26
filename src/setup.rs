@@ -29,11 +29,11 @@
 //! # Example
 //!
 //! ```rust,no_run
-//! # use trx2::*;
+//! # use trx::*;
 //! # use std::sync::Arc;
 //! # fn example() -> Result<(), TrxError> {
 //! let mut rng = rand::thread_rng();
-//! let crypto = TrxCrypto::<tess::Bn254>::new(&mut rng, 5, 3)?;
+//! let crypto = TrxCrypto::<tess::PairingEngine>::new(&mut rng, 5, 3)?;
 //!
 //! // Generate trusted setup (once)
 //! let setup = crypto.generate_trusted_setup(&mut rng, 128, 1000)?;
@@ -53,7 +53,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use rand_core::RngCore;
-use tess::{CurvePoint, FieldElement, Fr, PairingBackend, SRS, ThresholdEncryption};
+use tess::{CurvePoint, FieldElement, Fr, PairingBackend, ThresholdEncryption, SRS};
 
 use crate::{PublicKey, SecretKeyShare, TrxCrypto, TrxError, ValidatorId};
 
@@ -78,6 +78,35 @@ pub struct TrustedSetup<B: PairingBackend<Scalar = Fr>> {
     pub kappa_setups: Vec<KappaSetup<B>>,
 }
 
+impl<B: PairingBackend<Scalar = Fr>> TrustedSetup<B> {
+    /// Validates that a context index is within bounds.
+    ///
+    /// Ensures the context_index can be used to safely access kappa_setups.
+    ///
+    /// # Arguments
+    ///
+    /// * `context_index` - The context index to validate
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the index is valid.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TrxError::InvalidInput`] if the context index exceeds the
+    /// number of available kappa contexts.
+    pub fn validate_context_index(&self, context_index: u32) -> Result<(), TrxError> {
+        if context_index as usize >= self.kappa_setups.len() {
+            return Err(TrxError::InvalidInput(format!(
+                "context_index {} exceeds maximum {} (from trusted setup)",
+                context_index,
+                self.kappa_setups.len() - 1
+            )));
+        }
+        Ok(())
+    }
+}
+
 /// Single-use randomized context for batch decryption.
 ///
 /// Each kappa context provides a unique randomness binding for a specific
@@ -93,6 +122,42 @@ pub struct KappaSetup<B: PairingBackend> {
     pub elements: Vec<B::G1>,
     /// Atomic flag indicating if this context has been consumed
     pub used: AtomicBool,
+}
+
+impl<B: PairingBackend> KappaSetup<B> {
+    /// Atomically marks this context as used.
+    ///
+    /// Ensures single-use semantics for kappa contexts to prevent replay attacks.
+    /// Uses SeqCst ordering for maximum safety across thread boundaries.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(())` if the context was successfully marked as used
+    /// - `Err(TrxError::InvalidInput)` if the context was already used
+    ///
+    /// # Thread Safety
+    ///
+    /// Safe to call concurrently from multiple threads. Only one caller will succeed.
+    pub fn try_use(&self) -> Result<(), TrxError> {
+        use core::sync::atomic::Ordering;
+        if self.used.swap(true, Ordering::SeqCst) {
+            return Err(TrxError::InvalidInput(format!(
+                "kappa context {} already used",
+                self.index
+            )));
+        }
+        Ok(())
+    }
+
+    /// Checks if this context has been used.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the context has been consumed, `false` otherwise.
+    pub fn is_used(&self) -> bool {
+        use core::sync::atomic::Ordering;
+        self.used.load(Ordering::SeqCst)
+    }
 }
 
 /// Cryptographic material for a single epoch.

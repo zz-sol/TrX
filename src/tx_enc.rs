@@ -23,12 +23,12 @@
 //! # Example
 //!
 //! ```rust,no_run
-//! # use trx2::*;
+//! # use trx::*;
 //! # use ed25519_dalek::SigningKey;
 //! # use std::sync::Arc;
 //! # fn example() -> Result<(), TrxError> {
 //! # let mut rng = rand::thread_rng();
-//! # let crypto = TrxCrypto::<tess::Bn254>::new(&mut rng, 5, 3)?;
+//! # let crypto = TrxCrypto::<tess::PairingEngine>::new(&mut rng, 5, 3)?;
 //! # let setup = crypto.generate_trusted_setup(&mut rng, 128, 1000)?;
 //! # let epoch_keys = crypto.run_dkg(&mut rng, &vec![0,1,2,3,4], 3, Arc::new(setup))?;
 //! let signing_key = SigningKey::generate(&mut rng);
@@ -45,7 +45,7 @@
 //! // Batch decryption
 //! let batch = vec![encrypted_tx];
 //! let context = DecryptionContext { block_height: 1, context_index: 0 };
-//! let commitment = TrxCrypto::<tess::Bn254>::compute_digest(&batch, &context, &epoch_keys.setup)?;
+//! let commitment = TrxCrypto::<tess::PairingEngine>::compute_digest(&batch, &context, &epoch_keys.setup)?;
 //! # Ok(())
 //! # }
 //! ```
@@ -60,8 +60,8 @@ use tess::{
 };
 
 use crate::{
-    BatchCommitment, EvalProof, PublicKey, SecretKeyShare, TrustedSetup, TrxCrypto, TrxError,
-    TxPublicVerifyKey, TxSignature, ValidatorId, verify_eval_proofs,
+    verify_eval_proofs, BatchCommitment, EvalProof, PublicKey, SecretKeyShare, TrustedSetup,
+    TrxCrypto, TrxError, TxPublicVerifyKey, TxSignature, ValidatorId,
 };
 
 /// Client-side transaction encryption interface.

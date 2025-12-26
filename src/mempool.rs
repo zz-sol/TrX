@@ -13,17 +13,17 @@
 //! # Usage
 //!
 //! ```rust,no_run
-//! # use trx2::*;
+//! # use trx::*;
 //! # use ed25519_dalek::SigningKey;
 //! # fn example() -> Result<(), TrxError> {
 //! # let mut rng = rand::thread_rng();
-//! # let crypto = TrxCrypto::<tess::Bn254>::new(&mut rng, 5, 3)?;
+//! # let crypto = TrxCrypto::<tess::PairingEngine>::new(&mut rng, 5, 3)?;
 //! # let signing_key = SigningKey::generate(&mut rng);
 //! # let setup = crypto.generate_trusted_setup(&mut rng, 128, 1000)?;
 //! # let epoch_keys = crypto.run_dkg(&mut rng, &vec![0,1,2,3,4], 3, std::sync::Arc::new(setup))?;
 //! # let encrypted_tx = crypto.encrypt_transaction(&epoch_keys.public_key, b"data", b"metadata", &signing_key)?;
 //! // Create mempool with max 1000 transactions
-//! let mut mempool = EncryptedMempool::<tess::Bn254>::new(1000);
+//! let mut mempool = EncryptedMempool::<tess::PairingEngine>::new(1000);
 //!
 //! // Add encrypted transaction
 //! mempool.add_encrypted_tx(encrypted_tx)?;

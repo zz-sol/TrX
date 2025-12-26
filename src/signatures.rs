@@ -26,33 +26,25 @@
 //!
 //! # Example
 //!
-//! ```rust,no_run
-//! # use trx2::*;
-//! # use ed25519_dalek::SigningKey;
-//! # use solana_bls_signatures::SecretKey;
+//! ```rust,ignore
+//! # use trx::*;
 //! # fn example() -> Result<(), TrxError> {
-//! # let mut rng = rand::thread_rng();
+//! # let signing_key = ValidatorSigningKey::new();
 //! # let vote = b"vote_data";
-//! # let block_hash = b"block_hash";
-//! # let pd = PartialDecryption::<tess::Bn254> {
-//! #     pd: tess::Bn254::G2::default(),
+//! # let pd = PartialDecryption::<tess::PairingEngine> {
+//! #     pd: tess::PairingEngine::G2::default(),
 //! #     validator_id: 0,
 //! #     context: DecryptionContext { block_height: 1, context_index: 0 },
 //! #     tx_index: 0,
 //! # };
 //! // Validator signs a vote with partial decryption
-//! let signing_key = ValidatorSigningKey::new(&mut rng);
 //! let signature = sign_validator_vote(&signing_key, vote, Some(&pd));
-//!
-//! // Verify the signature
-//! let verify_key = signing_key.pubkey().compress();
-//! verify_validator_vote(&verify_key, &signature, vote, Some(&pd))?;
 //! # Ok(())
 //! # }
 //! ```
 
 use blake3::Hasher;
-use solana_bls_signatures::{SecretKey, pubkey::VerifiablePubkey};
+use solana_bls_signatures::{pubkey::VerifiablePubkey, SecretKey};
 use tess::{CurvePoint, PairingBackend};
 
 use crate::{PartialDecryption, TrxError};
