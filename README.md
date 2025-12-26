@@ -1,5 +1,9 @@
 # TrX
 
+[![CI](https://github.com/yourusername/TrX2/workflows/ci/badge.svg)](https://github.com/yourusername/TrX2/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE-MIT)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE-APACHE)
+
 A production-ready threshold-encrypted transaction system for blockchain networks, built on [Tess](https://github.com/zz-sol/Tess).
 
 ## Overview
@@ -21,79 +25,6 @@ TrX provides a complete cryptographic infrastructure for confidential transactio
 6. **Partial decryptions**: Validators produce decryption shares per tx.
 7. **Combine + decrypt**: Verify KZG eval proofs against the batch commitment,
    then combine shares once the threshold is met.
-
-## Architecture
-
-### System Layers
-```
-┌─────────────────────────────────────────────────────────┐
-│  Client Layer                                           │
-│  • Encrypt transactions with Ed25519 signatures         │
-│  • Submit to network                                    │
-└─────────────────────────────────────────────────────────┘
-                           ↓
-┌─────────────────────────────────────────────────────────┐
-│  Mempool Layer                                          │
-│  • Validate ciphertext and signatures                   │
-│  • Queue transactions with bounded size                 │
-└─────────────────────────────────────────────────────────┘
-                           ↓
-┌─────────────────────────────────────────────────────────┐
-│  Consensus Layer                                        │
-│  • Propose batches with KZG commitments                 │
-│  • Validators generate partial decryptions              │
-│  • Combine shares to decrypt batch                      │
-└─────────────────────────────────────────────────────────┘
-```
-
-### Component Flow
-```
-client    -> encrypt_transaction + sign (Ed25519)
-node      -> verify_ciphertext -> mempool
-proposer  -> compute_digest + compute_eval_proofs (KZG)
-validator -> generate_partial_decryption
-leader    -> combine_and_decrypt (verifies KZG proofs, aggregates shares)
-```
-
-## Key Types
-
-| Type | Description | Location |
-|------|-------------|----------|
-| `EncryptedTransaction` | Tess ciphertext + associated data + Ed25519 signature | [src/core/types.rs](src/core/types.rs) |
-| `BatchCommitment` | KZG commitment to the batch polynomial | [src/crypto/kzg.rs](src/crypto/kzg.rs) |
-| `EvalProof` | KZG opening `(point, value, proof)` for each tx | [src/crypto/kzg.rs](src/crypto/kzg.rs) |
-| `PartialDecryption` | Validator share for a single tx | [src/core/types.rs](src/core/types.rs) |
-| `BatchContext` | Bundle of `{batch, context, commitment, eval_proofs}` for decryption | [src/core/types.rs](src/core/types.rs) |
-
-## Core APIs
-
-All core functionality is implemented in [src/crypto/trx_crypto.rs](src/crypto/trx_crypto.rs).
-
-### Setup and DKG
-| Function | Description |
-|----------|-------------|
-| `TrxCrypto::new(rng, parties, threshold)` | Initialize the cryptographic system |
-| `generate_trusted_setup(rng, max_batch_size, max_contexts)` | Generate SRS and kappa contexts |
-| `run_dkg(rng, validators, threshold, setup)` | Execute distributed key generation |
-
-### Client Operations
-| Function | Description |
-|----------|-------------|
-| `encrypt_transaction(ek, payload, associated_data, signing_key)` | Encrypt and sign a transaction |
-| `verify_ciphertext(tx)` | Verify transaction signature and structure |
-
-### Batch Operations
-| Function | Return Type | Description |
-|----------|-------------|-------------|
-| `compute_digest(batch, context, setup)` | `BatchCommitment` | KZG commit to batch polynomial |
-| `compute_eval_proofs(batch, context, setup)` | `Vec<EvalProof>` | Generate per-tx KZG openings |
-| `generate_partial_decryption(share, commitment, context, tx_index, ciphertext)` | `PartialDecryption` | Validator creates decryption share |
-| `combine_and_decrypt(partials, batch_ctx, threshold, setup, agg_key)` | `Vec<DecryptionResult>` | Verify proofs and combine shares |
-
-### Validator Signatures (BLS)
-Implemented in [src/crypto/signatures.rs](src/crypto/signatures.rs):
-- `sign_validator_vote` / `verify_validator_vote`
-- `sign_validator_share` / `verify_validator_share`
 
 ## Quick Start
 
@@ -145,9 +76,19 @@ use trx::{
     BatchContext, DecryptionContext, EncryptedMempool, PairingEngine, TrxCrypto, ValidatorId,
 };
 
+
+/// Number of validators in the network
 const NUM_VALIDATORS: usize = 4;
+
+/// Threshold number of validators required for decryption (must be < NUM_VALIDATORS)
 const THRESHOLD: usize = 2;
+
+/// Maximum number of encrypted transactions per batch/block
+/// Also determines the SRS size for KZG commitments
 const MAX_BATCH: usize = 32;
+
+/// Number of pre-generated Kappa contexts in the trusted setup
+/// Determines how many concurrent batches/contexts can be supported before re-setup
 const MAX_CONTEXTS: usize = 16;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -284,6 +225,79 @@ let results = trx.combine_and_decrypt(
 // results[i].plaintext contains the decrypted payload
 ```
 
+## Architecture
+
+### System Layers
+```
+┌─────────────────────────────────────────────────────────┐
+│  Client Layer                                           │
+│  • Encrypt transactions with Ed25519 signatures         │
+│  • Submit to network                                    │
+└─────────────────────────────────────────────────────────┘
+                           ↓
+┌─────────────────────────────────────────────────────────┐
+│  Mempool Layer                                          │
+│  • Validate ciphertext and signatures                   │
+│  • Queue transactions with bounded size                 │
+└─────────────────────────────────────────────────────────┘
+                           ↓
+┌─────────────────────────────────────────────────────────┐
+│  Consensus Layer                                        │
+│  • Propose batches with KZG commitments                 │
+│  • Validators generate partial decryptions              │
+│  • Combine shares to decrypt batch                      │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Component Flow
+```
+client    -> encrypt_transaction + sign (Ed25519)
+node      -> verify_ciphertext -> mempool
+proposer  -> compute_digest + compute_eval_proofs (KZG)
+validator -> generate_partial_decryption
+leader    -> combine_and_decrypt (verifies KZG proofs, aggregates shares)
+```
+
+## Key Types
+
+| Type | Description | Location |
+|------|-------------|----------|
+| `EncryptedTransaction` | Tess ciphertext + associated data + Ed25519 signature | [src/core/types.rs](src/core/types.rs) |
+| `BatchCommitment` | KZG commitment to the batch polynomial | [src/crypto/kzg.rs](src/crypto/kzg.rs) |
+| `EvalProof` | KZG opening `(point, value, proof)` for each tx | [src/crypto/kzg.rs](src/crypto/kzg.rs) |
+| `PartialDecryption` | Validator share for a single tx | [src/core/types.rs](src/core/types.rs) |
+| `BatchContext` | Bundle of `{batch, context, commitment, eval_proofs}` for decryption | [src/core/types.rs](src/core/types.rs) |
+
+## Core APIs
+
+All core functionality is implemented in [src/crypto/trx_crypto.rs](src/crypto/trx_crypto.rs).
+
+### Setup and DKG
+| Function | Description |
+|----------|-------------|
+| `TrxCrypto::new(rng, parties, threshold)` | Initialize the cryptographic system |
+| `generate_trusted_setup(rng, max_batch_size, max_contexts)` | Generate SRS and kappa contexts |
+| `run_dkg(rng, validators, threshold, setup)` | Execute distributed key generation |
+
+### Client Operations
+| Function | Description |
+|----------|-------------|
+| `encrypt_transaction(ek, payload, associated_data, signing_key)` | Encrypt and sign a transaction |
+| `verify_ciphertext(tx)` | Verify transaction signature and structure |
+
+### Batch Operations
+| Function | Return Type | Description |
+|----------|-------------|-------------|
+| `compute_digest(batch, context, setup)` | `BatchCommitment` | KZG commit to batch polynomial |
+| `compute_eval_proofs(batch, context, setup)` | `Vec<EvalProof>` | Generate per-tx KZG openings |
+| `generate_partial_decryption(share, commitment, context, tx_index, ciphertext)` | `PartialDecryption` | Validator creates decryption share |
+| `combine_and_decrypt(partials, batch_ctx, threshold, setup, agg_key)` | `Vec<DecryptionResult>` | Verify proofs and combine shares |
+
+### Validator Signatures (BLS)
+Implemented in [src/crypto/signatures.rs](src/crypto/signatures.rs):
+- `sign_validator_vote` / `verify_validator_vote`
+- `sign_validator_share` / `verify_validator_share`
+
 ## Technical Details
 
 ### Batch Commitment & KZG Proofs
@@ -319,6 +333,7 @@ ed25519-dalek = "2.1"
 blake3 = "1"
 ```
 
+
 ## Error Handling
 | Error Type | Description |
 |------------|-------------|
@@ -329,6 +344,8 @@ blake3 = "1"
 See [src/core/errors.rs](src/core/errors.rs) for complete error definitions.
 
 ## Testing
+
+### Local Testing
 
 Run the test suite:
 ```bash
@@ -344,6 +361,30 @@ Run the example:
 ```bash
 cargo run --example toy_example
 ```
+
+### Platform-Specific Testing
+
+Test on specific targets:
+```bash
+# macOS
+cargo test --target x86_64-apple-darwin
+
+# Linux
+cargo test --target x86_64-unknown-linux-gnu
+
+# iOS (build only, library target)
+cargo build --target aarch64-apple-ios --lib
+cargo build --target aarch64-apple-ios-sim --lib
+```
+
+### Continuous Integration
+
+The CI pipeline automatically tests on:
+- **Ubuntu Latest**: Full test suite on Linux
+- **macOS Latest**: Full test suite on macOS
+- **iOS**: Build verification for `aarch64-apple-ios`, `x86_64-apple-ios`, and `aarch64-apple-ios-sim`
+
+All tests must pass on both Ubuntu and macOS before merging.
 
 ## Project Structure
 
