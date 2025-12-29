@@ -1,6 +1,8 @@
 //! Cryptographic signature helpers for clients and validators.
 //!
-//! This module provides signature functionality for two different parties in TrX:
+//! This module provides signature functionality for two different parties in TrX.
+//! All BLS signature functions and types are **public API** and can be used for
+//! custom consensus protocols.
 //!
 //! # Client Signatures (Ed25519)
 //!
@@ -11,13 +13,28 @@
 //!
 //! The signature message is `BLAKE3(ciphertext.payload || associated_data)`.
 //!
-//! # Validator Signatures (BLS)
+//! Client signatures are handled internally by [`TransactionEncryption::encrypt_transaction`]
+//! and [`TransactionEncryption::verify_ciphertext`].
+//!
+//! # Validator Signatures (BLS) - Public API
 //!
 //! Validators use BLS signatures for consensus operations:
 //! - **Vote Signatures**: Sign votes with optional partial decryptions
 //! - **Share Signatures**: Sign decryption shares for authenticity
 //!
 //! BLS signatures enable aggregation and batch verification in consensus.
+//!
+//! ## Public Functions
+//!
+//! - [`sign_validator_vote`] / [`verify_validator_vote`] - Consensus votes
+//! - [`sign_validator_share`] / [`verify_validator_share`] - Decryption shares
+//! - [`validator_vote_message`] / [`validator_share_message`] - Message construction
+//!
+//! ## Type Aliases
+//!
+//! - [`ValidatorSigningKey`] - BLS secret key
+//! - [`ValidatorVerifyKey`] - BLS compressed public key
+//! - [`ValidatorSignature`] - BLS compressed signature
 //!
 //! # Message Formats
 //!
@@ -39,9 +56,16 @@
 //! # };
 //! // Validator signs a vote with partial decryption
 //! let signature = sign_validator_vote(&signing_key, vote, Some(&pd));
+//!
+//! // Verify the signature
+//! let verify_key = signing_key.pubkey().compress();
+//! verify_validator_vote(&verify_key, &signature, vote, Some(&pd))?;
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! [`TransactionEncryption::encrypt_transaction`]: crate::TransactionEncryption::encrypt_transaction
+//! [`TransactionEncryption::verify_ciphertext`]: crate::TransactionEncryption::verify_ciphertext
 
 use blake3::Hasher;
 use solana_bls_signatures::{pubkey::VerifiablePubkey, SecretKey};

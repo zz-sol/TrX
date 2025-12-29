@@ -154,10 +154,13 @@
 //! # Features
 //!
 //! - **Threshold Encryption**: Configurable threshold parameters (t-of-n)
+//! - **Silent Setup**: Non-interactive key generation via Tess protocol
 //! - **KZG Commitments**: Succinct batch commitments with constant-size proofs
 //! - **Dual Signatures**: Ed25519 for clients, BLS for validators
 //! - **Precomputation**: Performance optimization via caching
 //! - **MEV Protection**: Transaction privacy until post-ordering decryption
+//! - **JSON Serialization**: Full serde support for all cryptographic types
+//! - **CLI Tool**: Command-line interface for testing and development
 //!
 //! # Security Notes
 //!
@@ -166,17 +169,52 @@
 //! - Decryption contexts prevent replay across blocks/epochs
 //! - Client signatures bind transactions to specific ciphertext+metadata
 //!
+//! # Serialization
+//!
+//! All TrX and Tess types support JSON serialization via serde:
+//!
+//! ```rust,no_run
+//! # use trx::*;
+//! # use tess::PairingEngine;
+//! # fn example(encrypted_tx: EncryptedTransaction<PairingEngine>) -> Result<(), Box<dyn std::error::Error>> {
+//! use serde_json;
+//!
+//! // Serialize to JSON
+//! let json = serde_json::to_string(&encrypted_tx)?;
+//!
+//! // Deserialize from JSON
+//! let tx: EncryptedTransaction<PairingEngine> = serde_json::from_str(&json)?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! This enables persistent storage, network transmission, and easy integration with
+//! JSON-based APIs.
+//!
+//! # CLI Tool
+//!
+//! TrX includes a command-line interface for testing and development. Build and run:
+//!
+//! ```bash
+//! cargo build --release --bin trx
+//! ./target/release/trx demo
+//! ```
+//!
+//! Available commands: `setup`, `keygen`, `aggregate-keys`, `encrypt`, `commit`,
+//! `partial-decrypt`, `decrypt`, and `demo`. All commands support JSON input/output.
+//!
 //! # Module Organization
 //!
 //! - `core`: Protocol types and errors
 //! - `crypto`: Tess/KZG/BLS/Ed25519 adapters
+//! - `sdk`: High-level phase-based API
 //! - `mempool`: Encrypted transaction mempool
 //! - `network`: Network message types
 //!
 //! # References
 //!
-//! - [spec.md](../spec.md): Complete protocol specification
-//! - [plan.md](../plan.md): Implementation roadmap
+//! - [TrX Paper](https://eprint.iacr.org/2025/2032): Encrypted Mempools in High Performance BFT
+//! - [Tess Paper](https://eprint.iacr.org/2024/263): Threshold Encryption with Silent Setup
 
 extern crate alloc;
 

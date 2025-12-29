@@ -2,6 +2,9 @@
 //!
 //! Defines the messages exchanged between clients, proposers, and validators
 //! during the encrypted transaction lifecycle.
+//!
+//! The [`TrxMessage`] enum is part of the **public API** and can be used to build
+//! custom network layers for encrypted mempool systems.
 
 use tess::PairingBackend;
 
@@ -10,13 +13,15 @@ use crate::{
     ValidatorVerifyKey,
 };
 
-/// Network protocol messages for TrX.
+/// Network protocol messages for TrX (Public API).
 ///
-/// Placeholder type: this crate doesn't define a concrete network layer.
-/// Consumers should adapt or replace these messages to fit their own protocol.
+/// This enum is part of the public API and defines the complete set of messages
+/// exchanged between clients, validators, and proposers during the encrypted
+/// transaction lifecycle.
 ///
-/// Defines the complete set of messages exchanged between clients, validators,
-/// and proposers during the encrypted transaction lifecycle.
+/// This crate doesn't provide a concrete network layer implementation.
+/// Consumers should use these message types to build their own network protocol
+/// or integrate with existing consensus systems.
 ///
 /// # Message Flow
 ///

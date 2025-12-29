@@ -52,13 +52,118 @@ TrX provides a complete cryptographic infrastructure for confidential transactio
 
 ## Quick Start
 
+### Installation
+
 Add TrX to your `Cargo.toml`:
 ```toml
 [dependencies]
 trx = { git = "https://github.com/zz-sol/TrX" }
 ```
 
-## Toy Example
+### CLI Tool
+
+TrX includes a command-line interface for testing and development:
+
+```bash
+# Build the CLI
+cargo build --release --bin trx
+
+# Run the demo (4 validators, threshold 2, 3 transactions)
+./target/release/trx demo
+
+# Customize demo parameters
+./target/release/trx demo --num-validators 8 --threshold 5 --num-txs 10
+
+# View all available commands
+./target/release/trx --help
+```
+
+Available commands:
+- `setup` - Generate trusted setup
+- `keygen` - Generate validator keys (silent setup)
+- `aggregate-keys` - Aggregate validator public keys
+- `encrypt` - Encrypt a transaction
+- `commit` - Compute batch commitment
+- `partial-decrypt` - Generate partial decryption
+- `decrypt` - Combine shares and decrypt
+- `demo` - Run full end-to-end workflow
+
+All commands support JSON input/output for easy integration.
+
+## SDK Usage (Recommended)
+
+The SDK provides a high-level, phase-based API that simplifies encrypted mempool integration:
+
+```rust
+use trx::TrxClient;
+use tess::PairingEngine;
+use ed25519_dalek::SigningKey;
+use std::sync::Arc;
+use rand::thread_rng;
+
+fn main() -> Result<(), trx::TrxError> {
+    let mut rng = thread_rng();
+
+    // Create client (5 validators, 3 threshold)
+    let client = TrxClient::<PairingEngine>::new(&mut rng, 5, 3)?;
+
+    // Phase 1: Setup
+    let setup = Arc::new(client.setup().generate_trusted_setup(&mut rng, 128, 1000)?);
+
+    // Phase 2: Silent key generation
+    let validators: Vec<u32> = (0..5).collect();
+    let validator_keypairs: Vec<_> = validators
+        .iter()
+        .map(|&id| client.validator().keygen_single_validator(&mut rng, id))
+        .collect::<Result<Vec<_>, _>>()?;
+    let epoch_keys = client.setup().aggregate_epoch_keys(
+        validator_keypairs.clone(),
+        3,
+        setup.clone()
+    )?;
+
+    // Phase 3: Client encryption
+    let signing_key = SigningKey::generate(&mut rng);
+    let encrypted_tx = client.client().encrypt_transaction(
+        &epoch_keys.public_key,
+        b"secret transaction data",
+        b"public metadata",
+        &signing_key,
+    )?;
+
+    // Phase 4: Mempool management
+    let mut mempool = client.mempool().create_mempool(128);
+    mempool.add_encrypted_tx(encrypted_tx)?;
+
+    // Phase 5: Batch commitment
+    let batch = mempool.get_batch(10);
+    let context = trx::DecryptionContext {
+        block_height: 1,
+        context_index: 0,
+    };
+    let (commitment, proofs) = client.proposer().create_batch_commitment(
+        &batch,
+        &context,
+        &setup,
+    )?;
+
+    // Phase 6: Threshold decryption
+    let results = client.decryption().decrypt_batch(
+        &batch,
+        &commitment,
+        &proofs,
+        &context,
+        &validator_keypairs,
+        3,
+        &setup,
+        &epoch_keys.public_key,
+    )?;
+
+    Ok(())
+}
+```
+
+## Low-Level Example (Direct API)
 
 This example demonstrates a complete flow with 4 validators (threshold=2, requiring 3 shares) and one confidential transaction.
 
@@ -230,6 +335,37 @@ let results = trx.combine_and_decrypt(
 // results[i].plaintext contains the decrypted payload
 ```
 
+## Serialization Support
+
+All TrX and Tess types support JSON serialization via serde:
+
+```rust
+use serde_json;
+use trx::{EncryptedTransaction, BatchCommitment, EvalProof, PartialDecryption};
+
+// Serialize encrypted transaction to JSON
+let json = serde_json::to_string(&encrypted_tx)?;
+
+// Deserialize from JSON
+let tx: EncryptedTransaction<PairingEngine> = serde_json::from_str(&json)?;
+
+// Works with all cryptographic types
+let commitment_json = serde_json::to_string(&commitment)?;
+let proof_json = serde_json::to_string(&eval_proof)?;
+let share_json = serde_json::to_string(&partial_decryption)?;
+```
+
+Serializable types include:
+- **Core types**: `EncryptedTransaction`, `PartialDecryption`, `DecryptionContext`, `BatchCommitment`, `EvalProof`
+- **Crypto types**: `TrustedSetup`, `KappaSetup`, `EpochKeys`, `ValidatorKeyPair`, `PublicKey`, `SecretKeyShare`
+- **Tess types**: `Ciphertext`, `AggregateKey`, `SRS`, `Params`, `PublicKey`, `SecretKey`
+
+This enables:
+- Persistent storage of setup parameters
+- Network transmission of cryptographic objects
+- Easy integration with JSON-based APIs
+- Cross-language compatibility
+
 ## Architecture
 
 ### System Layers
@@ -275,9 +411,22 @@ leader    -> combine_and_decrypt (verifies KZG proofs, aggregates shares)
 
 ## Core APIs
 
+### High-Level SDK (Recommended)
+
+The SDK provides phase-based interfaces in [src/sdk](src/sdk):
+- **`TrxClient`**: Main client wrapping all phases
+- **`SetupPhase`**: Trusted setup and key aggregation
+- **`ValidatorPhase`**: Silent key generation
+- **`ClientPhase`**: Transaction encryption
+- **`MempoolPhase`**: Transaction queue management
+- **`ProposerPhase`**: Batch commitment and proof generation
+- **`DecryptionPhase`**: Threshold decryption
+
+### Low-Level Cryptographic API
+
 All core functionality is implemented in [src/crypto/trx_crypto.rs](src/crypto/trx_crypto.rs).
 
-### Setup and Silent Key Generation
+#### Setup and Silent Key Generation
 | Function | Description |
 |----------|-------------|
 | `TrxCrypto::new(rng, parties, threshold)` | Initialize the cryptographic system |
@@ -285,13 +434,13 @@ All core functionality is implemented in [src/crypto/trx_crypto.rs](src/crypto/t
 | `keygen_single_validator(rng, validator_id)` | Each validator independently generates their own key pair (silent setup) |
 | `aggregate_epoch_keys(keypairs, threshold, setup)` | Non-interactively aggregate validator public keys into epoch keys |
 
-### Client Operations
+#### Client Operations
 | Function | Description |
 |----------|-------------|
 | `encrypt_transaction(ek, payload, associated_data, signing_key)` | Encrypt and sign a transaction |
 | `verify_ciphertext(tx)` | Verify transaction signature and structure |
 
-### Batch Operations
+#### Batch Operations
 | Function | Return Type | Description |
 |----------|-------------|-------------|
 | `compute_digest(batch, context, setup)` | `BatchCommitment` | KZG commit to batch polynomial |
@@ -299,10 +448,32 @@ All core functionality is implemented in [src/crypto/trx_crypto.rs](src/crypto/t
 | `generate_partial_decryption(share, commitment, context, tx_index, ciphertext)` | `PartialDecryption` | Validator creates decryption share |
 | `combine_and_decrypt(partials, batch_ctx, threshold, setup, agg_key)` | `Vec<DecryptionResult>` | Verify proofs and combine shares |
 
-### Validator Signatures (BLS)
-Implemented in [src/crypto/signatures.rs](src/crypto/signatures.rs):
-- `sign_validator_vote` / `verify_validator_vote`
-- `sign_validator_share` / `verify_validator_share`
+#### Validator Signatures (BLS)
+
+Public API in [src/crypto/signatures.rs](src/crypto/signatures.rs):
+
+| Function | Description |
+|----------|-------------|
+| `sign_validator_vote(signing_key, vote, partial_decryption)` | Sign consensus vote with optional PD |
+| `verify_validator_vote(verify_key, signature, vote, partial_decryption)` | Verify validator vote signature |
+| `sign_validator_share(signing_key, block_hash, share)` | Sign partial decryption share |
+| `verify_validator_share(verify_key, signature, block_hash, share)` | Verify PD signature |
+| `validator_vote_message(vote, partial_decryption)` | Compute BLAKE3 message for vote signing |
+| `validator_share_message(block_hash, share)` | Compute BLAKE3 message for share signing |
+
+Type aliases:
+- `ValidatorSigningKey` - BLS secret key
+- `ValidatorVerifyKey` - BLS compressed public key
+- `ValidatorSignature` - BLS compressed signature
+
+#### Network Messages
+
+The `TrxMessage` enum ([src/network/messages.rs](src/network/messages.rs)) defines protocol messages:
+- `SubmitEncryptedTx` - Client submits transaction
+- `ProposeBlock` - Proposer broadcasts block
+- `VoteWithDecryption` - Validator vote + optional PD
+- `RequestDecryptionShares` - Request PDs for batch
+- `DecryptionShare` - Validator responds with PD
 
 ## Technical Details
 
@@ -323,20 +494,39 @@ Implemented in [src/crypto/signatures.rs](src/crypto/signatures.rs):
 
 ```
 src/
-├── core/           # Core types and error definitions
-├── crypto/         # Cryptographic operations
-│   ├── trx_crypto.rs    # Main TrxCrypto implementation
-│   ├── kzg.rs           # KZG commitments and proofs
-│   ├── signatures.rs    # BLS validator signatures
-│   └── pre_computation.rs
-├── mempool/        # Transaction mempool
-└── network/        # Network message types
+├── bin/
+│   └── trx.rs          # CLI binary for testing and development
+├── core/
+│   ├── types.rs        # Protocol data structures
+│   ├── errors.rs       # Error types
+│   ├── serde_impl.rs   # Serde for core types
+│   └── mod.rs
+├── crypto/
+│   ├── trx_crypto.rs   # Main TrxCrypto implementation
+│   ├── kzg.rs          # KZG commitments and proofs
+│   ├── signatures.rs   # BLS validator signatures (public API)
+│   ├── pre_computation.rs # KZG caching layer
+│   ├── serde_impl.rs   # Serde for crypto types
+│   └── mod.rs
+├── sdk/
+│   ├── mod.rs          # TrxClient and phase traits
+│   ├── setup.rs        # SetupPhase implementation
+│   ├── validator.rs    # ValidatorPhase implementation
+│   ├── client.rs       # ClientPhase implementation
+│   ├── mempool.rs      # MempoolPhase implementation
+│   ├── proposer.rs     # ProposerPhase implementation
+│   └── decryption.rs   # DecryptionPhase implementation
+├── mempool/
+│   └── mod.rs          # EncryptedMempool
+├── network/
+│   └── messages.rs     # TrxMessage protocol enum
+└── lib.rs              # Public API exports
 
 examples/
-└── toy_example.rs  # Complete working example
+└── sdk_example.rs      # Complete SDK example
 
 tests/
-└── flow.rs         # End-to-end integration tests
+└── flow.rs             # End-to-end integration tests
 ```
 
 ## License

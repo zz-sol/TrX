@@ -125,7 +125,59 @@ pub trait SetupManager {
 }
 ```
 
-### 3.2 Encryption Interface
+### 3.2 BLS Signature Functions (Public API)
+
+The following BLS signature functions are exposed as part of the public API for building custom consensus protocols:
+
+```rust
+/// Validator's BLS secret signing key
+pub type ValidatorSigningKey = SecretKey;
+
+/// Validator's compressed BLS public verification key
+pub type ValidatorVerifyKey = solana_bls_signatures::PubkeyCompressed;
+
+/// Validator's compressed BLS signature
+pub type ValidatorSignature = solana_bls_signatures::SignatureCompressed;
+
+/// Sign a validator vote (with optional partial decryption)
+pub fn sign_validator_vote<B: PairingBackend>(
+    signing_key: &ValidatorSigningKey,
+    vote: &[u8],
+    partial_decryption: Option<&PartialDecryption<B>>,
+) -> ValidatorSignature;
+
+/// Verify a validator vote signature
+pub fn verify_validator_vote<B: PairingBackend>(
+    verify_key: &ValidatorVerifyKey,
+    vote: &[u8],
+    partial_decryption: Option<&PartialDecryption<B>>,
+    signature: &ValidatorSignature,
+) -> Result<(), TrxError>;
+
+/// Sign a validator decryption share
+pub fn sign_validator_share<B: PairingBackend>(
+    signing_key: &ValidatorSigningKey,
+    share: &PartialDecryption<B>,
+) -> ValidatorSignature;
+
+/// Verify a validator decryption share signature
+pub fn verify_validator_share<B: PairingBackend>(
+    verify_key: &ValidatorVerifyKey,
+    share: &PartialDecryption<B>,
+    signature: &ValidatorSignature,
+) -> Result<(), TrxError>;
+```
+
+These functions are available in the public API via:
+```rust
+use trx::{
+    sign_validator_vote, verify_validator_vote,
+    sign_validator_share, verify_validator_share,
+    ValidatorSigningKey, ValidatorVerifyKey, ValidatorSignature,
+}
+```
+
+### 3.3 Encryption Interface
 ```rust
 pub trait TransactionEncryption {
     /// Client-side encryption
@@ -135,7 +187,7 @@ pub trait TransactionEncryption {
         associated_data: &[u8],
         signing_key: &Ed25519SigningKey,
     ) -> Result<EncryptedTransaction>;
-    
+
     /// Verify ciphertext validity
     fn verify_ciphertext(
         ct: &EncryptedTransaction,
@@ -143,7 +195,7 @@ pub trait TransactionEncryption {
 }
 ```
 
-### 3.3 Batch Decryption
+### 3.4 Batch Decryption
 ```rust
 pub trait BatchDecryption {
     /// Compute digest for batch (public operation)
@@ -301,67 +353,264 @@ impl EncryptedMempool {
 
 ## 6. Network Protocol
 
-### 6.1 Message Types
+### 6.1 Message Types (Public API)
+
+The `TrxMessage` enum is exposed as part of the public API for building custom network layers:
+
 ```rust
-pub enum TrxMessage {
+pub enum TrxMessage<B: PairingBackend> {
     // Transaction submission
-    SubmitEncryptedTx(EncryptedTransaction),
-    
+    SubmitEncryptedTx(EncryptedTransaction<B>),
+
     // Consensus messages
     ProposeBlock {
         block: Block,
-        encrypted_txs: Vec<EncryptedTransaction>,
+        encrypted_txs: Vec<EncryptedTransaction<B>>,
     },
-    
+
     VoteWithDecryption {
         vote: Vote,
-        partial_decryption: Option<PartialDecryption>,
+        partial_decryption: Option<PartialDecryption<B>>,
         validator_sig: ValidatorSignature,
         validator_vk: ValidatorVerifyKey,
     },
-    
+
     // Decryption coordination
     RequestDecryptionShares {
         block_hash: Hash,
         context: DecryptionContext,
     },
-    
+
     DecryptionShare {
         block_hash: Hash,
-        share: PartialDecryption,
+        share: PartialDecryption<B>,
         validator_sig: ValidatorSignature,
         validator_vk: ValidatorVerifyKey,
     },
 }
 ```
 
-## 7. Client SDK (not implemented)
-
-### 7.1 Client Interface
+The message types are available in the public API via:
 ```rust
-pub struct TrxClient {
-    node_url: String,
-    current_epoch_key: PublicKey,
-}
+use trx::TrxMessage;
+```
 
-impl TrxClient {
-    /// Encrypt and submit transaction
-    pub async fn submit_transaction(
-        &self,
-        transaction: Transaction,
-        enable_mev_protection: bool,
-    ) -> Result<TxHash> {
-        if enable_mev_protection {
-            let encrypted = encrypt_transaction(
-                &self.current_epoch_key,
-                &transaction.encode(),
-                &transaction.metadata(),
-            )?;
-            
-            self.submit_encrypted(encrypted).await
-        } else {
-            self.submit_plaintext(transaction).await
-        }
-    }
-}
+## 7. Serialization Support
+
+All TrX and Tess types support JSON serialization via serde:
+
+```rust
+use serde_json;
+use trx::sdk::setup::*;
+
+// Setup phase
+let setup_output = run_silent_setup(4, 2)?;
+
+// Serialize to JSON
+let json = serde_json::to_string(&setup_output)?;
+
+// Deserialize from JSON
+let recovered: SetupOutput = serde_json::from_str(&json)?;
+```
+
+Serialization is available for:
+- All cryptographic types (curve points, field elements, target groups)
+- Setup outputs (public keys, trusted parameters)
+- Encrypted transactions and ciphertexts
+- Partial decryptions and batch commitments
+- Validator keys and signatures
+
+## 8. Client SDK (Implemented)
+
+The TrX SDK provides a modular 6-phase architecture for building encrypted transaction systems.
+
+### 8.1 SDK Modules
+
+```rust
+use trx::sdk::{
+    setup,      // Phase 1: Silent setup
+    validator,  // Phase 2: Validator operations
+    client,     // Phase 3: Client encryption
+    mempool,    // Phase 4: Mempool management
+    proposer,   // Phase 5: Block proposal
+    decryption, // Phase 6: Batch decryption
+};
+```
+
+### 8.2 Phase 1: Setup
+
+Silent setup protocol with non-interactive key generation:
+
+```rust
+use trx::sdk::setup::*;
+
+// Generate silent setup for 4 validators with threshold 2
+let setup_output = run_silent_setup(4, 2)?;
+
+// Extract components
+let public_key = setup_output.public_key;
+let validator_keys = setup_output.validator_keys;
+let trusted_setup = setup_output.trusted_setup;
+```
+
+### 8.3 Phase 2: Validator
+
+Validator key management and signature operations:
+
+```rust
+use trx::sdk::validator::*;
+
+// Create validator instance
+let validator = Validator::new(
+    0,  // validator_id
+    validator_keys[0].clone(),
+    public_key.clone(),
+);
+
+// Generate BLS signing key for consensus
+let bls_sk = validator.generate_bls_signing_key();
+let bls_vk = validator.get_bls_verify_key(&bls_sk);
+```
+
+### 8.4 Phase 3: Client
+
+Client-side transaction encryption:
+
+```rust
+use trx::sdk::client::*;
+
+// Create client
+let client = TrxClient::new(public_key.clone());
+
+// Encrypt transaction
+let encrypted_tx = client.encrypt_transaction(
+    b"transaction payload",
+    b"associated data",
+)?;
+```
+
+### 8.5 Phase 4: Mempool
+
+Encrypted mempool management:
+
+```rust
+use trx::sdk::mempool::*;
+
+// Create mempool
+let mut mempool = TrxMempool::new();
+
+// Add encrypted transaction
+mempool.add_transaction(encrypted_tx)?;
+
+// Get batch for proposal
+let batch = mempool.get_batch(10);
+```
+
+### 8.6 Phase 5: Proposer
+
+Block proposal with batch commitment:
+
+```rust
+use trx::sdk::proposer::*;
+
+// Create proposer
+let proposer = TrxProposer::new(
+    public_key.clone(),
+    trusted_setup.clone(),
+);
+
+// Propose batch
+let proposal = proposer.propose_batch(
+    batch,
+    block_height,
+    context_index,
+)?;
+```
+
+### 8.7 Phase 6: Decryption
+
+Threshold decryption with partial shares:
+
+```rust
+use trx::sdk::decryption::*;
+
+// Create decryptor
+let decryptor = TrxDecryptor::new(
+    public_key.clone(),
+    trusted_setup.clone(),
+    threshold,
+);
+
+// Generate partial decryption (validator)
+let partial = decryptor.generate_partial_decryption(
+    &validator_keys[0],
+    &proposal.commitment,
+    &proposal.context,
+    0,  // tx_index
+    &batch[0].ciphertext,
+)?;
+
+// Combine shares and decrypt (after collecting threshold shares)
+let decrypted_batch = decryptor.decrypt_batch(
+    partial_decryptions,
+    &batch,
+    &proposal.commitment,
+    &proposal.context,
+)?;
+```
+
+## 9. CLI Tool
+
+TrX includes a command-line interface for testing and development. The CLI binary is located at `src/bin/trx.rs`.
+
+### 9.1 Building
+
+```bash
+cargo build --release --bin trx
+./target/release/trx --help
+```
+
+### 9.2 Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `demo` | Run full end-to-end demo workflow |
+| `setup` | Generate silent setup parameters |
+| `keygen` | Generate validator keypair |
+| `aggregate` | Aggregate validator keys into public key |
+| `encrypt` | Encrypt a transaction |
+| `propose` | Propose a batch with commitment |
+| `partial-decrypt` | Generate partial decryption share |
+| `decrypt` | Combine shares and decrypt batch |
+
+### 9.3 Demo Command
+
+Run a complete encrypted transaction workflow:
+
+```bash
+# Run with default parameters (4 validators, threshold 2, 3 transactions)
+./target/release/trx demo
+
+# Run with custom parameters
+./target/release/trx demo --num-validators 8 --threshold 5 --num-txs 10
+```
+
+The demo command executes all 6 phases:
+1. Silent setup
+2. Validator key generation
+3. Transaction encryption
+4. Mempool management and batch proposal
+5. Partial decryption generation
+6. Threshold decryption
+
+### 9.4 JSON I/O
+
+All CLI commands support JSON input/output for integration with other tools:
+
+```bash
+# Setup outputs JSON
+./target/release/trx setup --num-validators 4 --threshold 2 > setup.json
+
+# Encrypt using setup parameters
+cat setup.json | ./target/release/trx encrypt --payload "my transaction"
 ```
