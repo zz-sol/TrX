@@ -18,7 +18,7 @@ use std::sync::Arc;
 use ed25519_dalek::SigningKey;
 use rand::{rngs::StdRng, thread_rng, SeedableRng};
 use tess::PairingEngine;
-use trx::TrxClient;
+use trx::TrxMinion;
 use trx::{BatchContext, DecryptionContext, ValidatorId};
 
 /// Network configuration
@@ -43,7 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         NUM_VALIDATORS, THRESHOLD
     );
 
-    let client = TrxClient::<PairingEngine>::new(&mut rng, NUM_VALIDATORS, THRESHOLD)?;
+    let client = TrxMinion::<PairingEngine>::new(&mut rng, NUM_VALIDATORS, THRESHOLD)?;
 
     println!(
         "  - Generating trusted setup (max batch: {}, contexts: {})",
@@ -84,11 +84,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         validator_keypairs.len()
     );
 
-    let epoch_keys = client.setup().aggregate_epoch_keys(
-        validator_keypairs.clone(),
-        THRESHOLD as u32,
-        setup.clone(),
-    )?;
+    // Extract only public keys for aggregation
+    let public_keys = validator_keypairs
+        .iter()
+        .map(|kp| kp.public_key.clone())
+        .collect();
+
+    let epoch_keys =
+        client
+            .setup()
+            .aggregate_epoch_keys(public_keys, THRESHOLD as u32, setup.clone())?;
 
     println!("  ✓ Epoch keys ready for client encryption!\n");
 

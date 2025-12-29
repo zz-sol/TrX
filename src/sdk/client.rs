@@ -17,13 +17,13 @@ use tess::{Fr, PairingBackend};
 /// # Example
 ///
 /// ```no_run
-/// use trx::TrxClient;
+/// use trx::TrxMinion;
 /// use tess::PairingEngine;
 /// use ed25519_dalek::SigningKey;
 /// use rand::thread_rng;
 ///
 /// let mut rng = thread_rng();
-/// let client = TrxClient::<PairingEngine>::new(&mut rng, 100, 67)?;
+/// let client = TrxMinion::<PairingEngine>::new(&mut rng, 100, 67)?;
 ///
 /// // Client generates signing key
 /// let signing_key = SigningKey::generate(&mut rng);
@@ -77,13 +77,13 @@ impl<'a, B: PairingBackend<Scalar = Fr>> ClientPhase<'a, B> {
     /// # Example
     ///
     /// ```no_run
-    /// use trx::TrxClient;
+    /// use trx::TrxMinion;
     /// use tess::PairingEngine;
     /// use ed25519_dalek::SigningKey;
     /// use rand::thread_rng;
     ///
     /// let mut rng = thread_rng();
-    /// let client = TrxClient::<PairingEngine>::new(&mut rng, 100, 67)?;
+    /// let client = TrxMinion::<PairingEngine>::new(&mut rng, 100, 67)?;
     /// let signing_key = SigningKey::generate(&mut rng);
     ///
     /// # let epoch_key = todo!();
@@ -131,12 +131,12 @@ impl<'a, B: PairingBackend<Scalar = Fr>> ClientPhase<'a, B> {
     /// # Example
     ///
     /// ```no_run
-    /// use trx::TrxClient;
+    /// use trx::TrxMinion;
     /// use tess::PairingEngine;
     /// use rand::thread_rng;
     ///
     /// let mut rng = thread_rng();
-    /// let client = TrxClient::<PairingEngine>::new(&mut rng, 100, 67)?;
+    /// let client = TrxMinion::<PairingEngine>::new(&mut rng, 100, 67)?;
     ///
     /// # let encrypted_tx = todo!();
     /// // Verify transaction before adding to mempool

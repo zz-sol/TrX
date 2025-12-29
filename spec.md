@@ -115,7 +115,7 @@ pub trait SetupManager {
 
     /// Non-interactive public key aggregation to create epoch keys
     fn aggregate_epoch_keys(
-        validator_keypairs: Vec<ValidatorKeyPair>,
+        validator_public_keys: Vec<PublicKey>,
         threshold: u32,
         setup: Arc<TrustedSetup>,
     ) -> Result<EpochKeys>;
@@ -480,7 +480,7 @@ Client-side transaction encryption:
 use trx::sdk::client::*;
 
 // Create client
-let client = TrxClient::new(public_key.clone());
+let client = TrxMinion::new(public_key.clone());
 
 // Encrypt transaction
 let encrypted_tx = client.encrypt_transaction(

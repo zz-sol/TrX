@@ -19,14 +19,14 @@ use tess::{Fr, PairingBackend};
 /// # Example
 ///
 /// ```no_run
-/// use trx::TrxClient;
+/// use trx::TrxMinion;
 /// use tess::PairingEngine;
 /// use trx::BatchContext;
 /// use rand::thread_rng;
 /// use std::sync::Arc;
 ///
 /// let mut rng = thread_rng();
-/// let client = TrxClient::<PairingEngine>::new(&mut rng, 5, 3)?;
+/// let client = TrxMinion::<PairingEngine>::new(&mut rng, 5, 3)?;
 ///
 /// # let partial_decryptions = vec![];
 /// # let batch_ctx = todo!();
@@ -100,14 +100,14 @@ where
     /// # Example
     ///
     /// ```no_run
-    /// use trx::TrxClient;
+    /// use trx::TrxMinion;
     /// use tess::PairingEngine;
     /// use trx::{BatchContext, DecryptionContext};
     /// use rand::thread_rng;
     /// use std::sync::Arc;
     ///
     /// let mut rng = thread_rng();
-    /// let client = TrxClient::<PairingEngine>::new(&mut rng, 5, 3)?;
+    /// let client = TrxMinion::<PairingEngine>::new(&mut rng, 5, 3)?;
     ///
     /// # let setup = Arc::new(todo!());
     /// # let batch = vec![];

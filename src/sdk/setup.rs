@@ -3,7 +3,7 @@
 //! This phase is performed once during system initialization to create the
 //! cryptographic parameters required for threshold encryption.
 
-use crate::{EpochKeys, SetupManager, TrustedSetup, TrxCrypto, TrxError, ValidatorKeyPair};
+use crate::{EpochKeys, SetupManager, TrustedSetup, TrxCrypto, TrxError};
 use std::sync::Arc;
 use tess::{Fr, PairingBackend};
 
@@ -17,13 +17,13 @@ use tess::{Fr, PairingBackend};
 /// # Example
 ///
 /// ```no_run
-/// use trx::TrxClient;
+/// use trx::TrxMinion;
 /// use tess::PairingEngine;
 /// use rand::thread_rng;
 /// use std::sync::Arc;
 ///
 /// let mut rng = thread_rng();
-/// let client = TrxClient::<PairingEngine>::new(&mut rng, 100, 67)?;
+/// let client = TrxMinion::<PairingEngine>::new(&mut rng, 100, 67)?;
 ///
 /// // Generate trusted setup for batches up to 1000 transactions
 /// let setup = Arc::new(
@@ -73,13 +73,13 @@ impl<'a, B: PairingBackend<Scalar = Fr>> SetupPhase<'a, B> {
     /// # Example
     ///
     /// ```no_run
-    /// use trx::TrxClient;
+    /// use trx::TrxMinion;
     /// use tess::PairingEngine;
     /// use rand::thread_rng;
     /// use std::sync::Arc;
     ///
     /// let mut rng = thread_rng();
-    /// let client = TrxClient::<PairingEngine>::new(&mut rng, 100, 67)?;
+    /// let client = TrxMinion::<PairingEngine>::new(&mut rng, 100, 67)?;
     ///
     /// // Setup for batches of up to 1000 txs, 100 blocks
     /// let setup = Arc::new(
@@ -101,40 +101,41 @@ impl<'a, B: PairingBackend<Scalar = Fr>> SetupPhase<'a, B> {
 
     /// Aggregate validator public keys into an epoch key.
     ///
-    /// This function takes individual validator key pairs and combines their
-    /// public keys into a single aggregate key used for encryption during the epoch.
+    /// This function takes individual validator public keys and combines them
+    /// into a single aggregate key used for encryption during the epoch.
     ///
     /// This operation is **non-interactive** - validators generate keys independently,
-    /// then a coordinator (or any party) can aggregate the public keys.
+    /// then a coordinator (or any party) can aggregate the public keys without
+    /// needing access to any secret key shares.
     ///
     /// # Arguments
     ///
-    /// * `validator_keypairs` - Public and secret key pairs from all validators
+    /// * `validator_public_keys` - Public keys from all validators
     /// * `threshold` - Minimum number of validators needed for decryption
     /// * `setup` - The trusted setup to bind this epoch to
     ///
     /// # Security Considerations
     ///
-    /// - Each validator must keep their `SecretKeyShare` private
+    /// - Only public keys are needed for aggregation (secret shares remain private)
     /// - Public keys can be safely shared over insecure channels
     /// - The aggregate key is deterministic (same inputs = same output)
     ///
     /// # Errors
     ///
     /// Returns `TrxError::InvalidConfig` if:
-    /// - `threshold >= validator_keypairs.len()`
-    /// - Validator IDs are not unique
+    /// - `threshold >= validator_public_keys.len()`
+    /// - Number of public keys doesn't match configured parties
     ///
     /// # Example
     ///
     /// ```no_run
-    /// use trx::TrxClient;
+    /// use trx::TrxMinion;
     /// use tess::PairingEngine;
     /// use rand::thread_rng;
     /// use std::sync::Arc;
     ///
     /// let mut rng = thread_rng();
-    /// let client = TrxClient::<PairingEngine>::new(&mut rng, 3, 2)?;
+    /// let client = TrxMinion::<PairingEngine>::new(&mut rng, 3, 2)?;
     /// let setup = Arc::new(client.setup().generate_trusted_setup(&mut rng, 100, 10)?);
     ///
     /// // Each validator generates their keypair independently
@@ -142,9 +143,9 @@ impl<'a, B: PairingBackend<Scalar = Fr>> SetupPhase<'a, B> {
     /// let kp1 = client.validator().keygen_single_validator(&mut rng, 1)?;
     /// let kp2 = client.validator().keygen_single_validator(&mut rng, 2)?;
     ///
-    /// // Coordinator aggregates public keys
+    /// // Coordinator aggregates ONLY the public keys (validators keep secret shares private)
     /// let epoch_keys = client.setup().aggregate_epoch_keys(
-    ///     vec![kp0, kp1, kp2],
+    ///     vec![kp0.public_key, kp1.public_key, kp2.public_key],
     ///     2,
     ///     setup.clone(),
     /// )?;
@@ -154,12 +155,12 @@ impl<'a, B: PairingBackend<Scalar = Fr>> SetupPhase<'a, B> {
     /// ```
     pub fn aggregate_epoch_keys(
         &self,
-        validator_keypairs: Vec<ValidatorKeyPair<B>>,
+        validator_public_keys: Vec<tess::PublicKey<B>>,
         threshold: u32,
         setup: Arc<TrustedSetup<B>>,
     ) -> Result<EpochKeys<B>, TrxError> {
         self.crypto
-            .aggregate_epoch_keys(validator_keypairs, threshold, setup)
+            .aggregate_epoch_keys(validator_public_keys, threshold, setup)
     }
 
     /// Verify the integrity of a trusted setup.
@@ -180,13 +181,13 @@ impl<'a, B: PairingBackend<Scalar = Fr>> SetupPhase<'a, B> {
     /// # Example
     ///
     /// ```no_run
-    /// use trx::TrxClient;
+    /// use trx::TrxMinion;
     /// use tess::PairingEngine;
     /// use rand::thread_rng;
     /// use std::sync::Arc;
     ///
     /// let mut rng = thread_rng();
-    /// let client = TrxClient::<PairingEngine>::new(&mut rng, 100, 67)?;
+    /// let client = TrxMinion::<PairingEngine>::new(&mut rng, 100, 67)?;
     /// let setup = Arc::new(client.setup().generate_trusted_setup(&mut rng, 1000, 100)?);
     ///
     /// // Verify before using

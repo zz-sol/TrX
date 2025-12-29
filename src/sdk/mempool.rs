@@ -16,12 +16,12 @@ use tess::{Fr, PairingBackend};
 /// # Example
 ///
 /// ```no_run
-/// use trx::TrxClient;
+/// use trx::TrxMinion;
 /// use tess::PairingEngine;
 /// use rand::thread_rng;
 ///
 /// let mut rng = thread_rng();
-/// let client = TrxClient::<PairingEngine>::new(&mut rng, 5, 3)?;
+/// let client = TrxMinion::<PairingEngine>::new(&mut rng, 5, 3)?;
 ///
 /// // Create mempool with capacity for 1000 transactions
 /// let mut mempool = client.mempool().create(1000);
@@ -63,12 +63,12 @@ impl<B: PairingBackend<Scalar = Fr>> MempoolPhase<B> {
     /// # Example
     ///
     /// ```no_run
-    /// use trx::TrxClient;
+    /// use trx::TrxMinion;
     /// use tess::PairingEngine;
     /// use rand::thread_rng;
     ///
     /// let mut rng = thread_rng();
-    /// let client = TrxClient::<PairingEngine>::new(&mut rng, 100, 67)?;
+    /// let client = TrxMinion::<PairingEngine>::new(&mut rng, 100, 67)?;
     ///
     /// // Create mempool for 10,000 pending transactions
     /// let mut mempool = client.mempool().create(10_000);
@@ -99,13 +99,13 @@ impl<B: PairingBackend<Scalar = Fr>> MempoolPhase<B> {
     /// # Example
     ///
     /// ```no_run
-    /// use trx::TrxClient;
+    /// use trx::TrxMinion;
     /// use tess::PairingEngine;
     /// use ed25519_dalek::SigningKey;
     /// use rand::thread_rng;
     ///
     /// let mut rng = thread_rng();
-    /// let client = TrxClient::<PairingEngine>::new(&mut rng, 5, 3)?;
+    /// let client = TrxMinion::<PairingEngine>::new(&mut rng, 5, 3)?;
     /// let mut mempool = client.mempool().create(1000);
     ///
     /// # let epoch_key = todo!();
@@ -152,12 +152,12 @@ impl<B: PairingBackend<Scalar = Fr>> MempoolPhase<B> {
     /// # Example
     ///
     /// ```no_run
-    /// use trx::TrxClient;
+    /// use trx::TrxMinion;
     /// use tess::PairingEngine;
     /// use rand::thread_rng;
     ///
     /// let mut rng = thread_rng();
-    /// let client = TrxClient::<PairingEngine>::new(&mut rng, 5, 3)?;
+    /// let client = TrxMinion::<PairingEngine>::new(&mut rng, 5, 3)?;
     /// let mut mempool = client.mempool().create(1000);
     ///
     /// // Proposer retrieves batch for block
@@ -191,12 +191,12 @@ impl<B: PairingBackend<Scalar = Fr>> MempoolPhase<B> {
     /// # Example
     ///
     /// ```no_run
-    /// use trx::TrxClient;
+    /// use trx::TrxMinion;
     /// use tess::PairingEngine;
     /// use rand::thread_rng;
     ///
     /// let mut rng = thread_rng();
-    /// let client = TrxClient::<PairingEngine>::new(&mut rng, 5, 3)?;
+    /// let client = TrxMinion::<PairingEngine>::new(&mut rng, 5, 3)?;
     /// let mempool = client.mempool().create(1000);
     ///
     /// let count = client.mempool().size(&mempool);

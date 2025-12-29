@@ -95,7 +95,7 @@ All commands support JSON input/output for easy integration.
 The SDK provides a high-level, phase-based API that simplifies encrypted mempool integration:
 
 ```rust
-use trx::TrxClient;
+use trx::TrxMinion;
 use tess::PairingEngine;
 use ed25519_dalek::SigningKey;
 use std::sync::Arc;
@@ -105,7 +105,7 @@ fn main() -> Result<(), trx::TrxError> {
     let mut rng = thread_rng();
 
     // Create client (5 validators, 3 threshold)
-    let client = TrxClient::<PairingEngine>::new(&mut rng, 5, 3)?;
+    let client = TrxMinion::<PairingEngine>::new(&mut rng, 5, 3)?;
 
     // Phase 1: Setup
     let setup = Arc::new(client.setup().generate_trusted_setup(&mut rng, 128, 1000)?);
@@ -116,8 +116,12 @@ fn main() -> Result<(), trx::TrxError> {
         .iter()
         .map(|&id| client.validator().keygen_single_validator(&mut rng, id))
         .collect::<Result<Vec<_>, _>>()?;
+    let public_keys = validator_keypairs
+        .iter()
+        .map(|kp| kp.public_key.clone())
+        .collect();
     let epoch_keys = client.setup().aggregate_epoch_keys(
-        validator_keypairs.clone(),
+        public_keys,
         3,
         setup.clone()
     )?;
@@ -158,117 +162,6 @@ fn main() -> Result<(), trx::TrxError> {
         &setup,
         &epoch_keys.public_key,
     )?;
-
-    Ok(())
-}
-```
-
-## Low-Level Example (Direct API)
-
-This example demonstrates a complete flow with 4 validators (threshold=2, requiring 3 shares) and one confidential transaction.
-
-```rust
-use std::sync::Arc;
-
-use ed25519_dalek::SigningKey;
-use rand::thread_rng;
-use trx::{
-    BatchContext, DecryptionContext, EncryptedMempool, PairingEngine, TrxCrypto, ValidatorId,
-};
-
-/// Number of validators in the network
-const NUM_VALIDATORS: usize = 4;
-
-/// Threshold number of validators required for decryption (must be < NUM_VALIDATORS)
-const THRESHOLD: usize = 2;
-
-/// Maximum number of encrypted transactions per batch/block
-/// Also determines the SRS size for KZG commitments
-const MAX_BATCH: usize = 32;
-
-/// Number of pre-generated Kappa contexts in the trusted setup
-/// Determines how many concurrent batches/contexts can be supported before re-setup
-const MAX_CONTEXTS: usize = 16;
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut rng = thread_rng();
-
-    // 1) Bootstrapping (operator)
-    let trx = TrxCrypto::<PairingEngine>::new(&mut rng, NUM_VALIDATORS, THRESHOLD)?;
-    let setup = Arc::new(trx.generate_trusted_setup(&mut rng, MAX_BATCH, MAX_CONTEXTS)?);
-
-    // 2) Silent Setup: Each validator independently generates their key pair (no interaction)
-    let validators: Vec<ValidatorId> = (0..NUM_VALIDATORS as u32).collect();
-    let validator_keypairs = validators
-        .iter()
-        .map(|&validator_id| trx.keygen_single_validator(&mut rng, validator_id))
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let validator_secret_shares = validator_keypairs
-        .iter()
-        .map(|kp| kp.secret_share.clone())
-        .collect::<Vec<_>>();
-
-    // Aggregate the public keys non-interactively
-    let epoch = trx.aggregate_epoch_keys(validator_keypairs, THRESHOLD as u32, setup.clone())?;
-
-    // 3) Client encrypts + signs
-    let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
-    let tx = trx.encrypt_transaction(
-        &epoch.public_key,
-        b"pay 10 to bob",
-        b"nonce:123",
-        &client_key,
-    )?;
-
-    // 3) Mempool admission
-    let mut mempool = EncryptedMempool::<PairingEngine>::new(MAX_BATCH);
-    mempool.add_encrypted_tx(tx)?;
-
-    // 4) Block proposal + batch precompute
-    let batch = mempool.get_batch(MAX_BATCH);
-    let context = DecryptionContext {
-        block_height: 100,
-        context_index: 0,
-    };
-    let commitment = TrxCrypto::<PairingEngine>::compute_digest(&batch, &context, &setup)?;
-    let eval_proofs = TrxCrypto::<PairingEngine>::compute_eval_proofs(&batch, &context, &setup)?;
-
-    // 5) Validators produce partial decryptions
-    let mut partials = Vec::new();
-    for (tx_index, tx) in batch.iter().enumerate() {
-        for validator_id in 0..(THRESHOLD + 1) {
-            let share = &validator_secret_shares[validator_id];
-            let pd = TrxCrypto::<PairingEngine>::generate_partial_decryption(
-                share,
-                &commitment,
-                &context,
-                tx_index,
-                &tx.ciphertext,
-            )?;
-            partials.push(pd);
-        }
-    }
-
-    // 6) Combine shares and decrypt
-    let batch_ctx = BatchContext {
-        batch: &batch,
-        context: &context,
-        commitment: &commitment,
-        eval_proofs: &eval_proofs,
-    };
-    let results = trx.combine_and_decrypt(
-        partials,
-        batch_ctx,
-        THRESHOLD as u32,
-        &setup,
-        &epoch.public_key.agg_key,
-    )?;
-
-    for (idx, res) in results.iter().enumerate() {
-        let plaintext = res.plaintext.as_ref().map(|p| p.as_slice()).unwrap_or(&[]);
-        println!("tx {}: {:?}", idx, plaintext);
-    }
 
     Ok(())
 }
@@ -414,7 +307,7 @@ leader    -> combine_and_decrypt (verifies KZG proofs, aggregates shares)
 ### High-Level SDK (Recommended)
 
 The SDK provides phase-based interfaces in [src/sdk](src/sdk):
-- **`TrxClient`**: Main client wrapping all phases
+- **`TrxMinion`**: Main client wrapping all phases
 - **`SetupPhase`**: Trusted setup and key aggregation
 - **`ValidatorPhase`**: Silent key generation
 - **`ClientPhase`**: Transaction encryption
@@ -432,7 +325,7 @@ All core functionality is implemented in [src/crypto/trx_crypto.rs](src/crypto/t
 | `TrxCrypto::new(rng, parties, threshold)` | Initialize the cryptographic system |
 | `generate_trusted_setup(rng, max_batch_size, max_contexts)` | Generate SRS and kappa contexts |
 | `keygen_single_validator(rng, validator_id)` | Each validator independently generates their own key pair (silent setup) |
-| `aggregate_epoch_keys(keypairs, threshold, setup)` | Non-interactively aggregate validator public keys into epoch keys |
+| `aggregate_epoch_keys(public_keys, threshold, setup)` | Non-interactively aggregate validator public keys into epoch keys |
 
 #### Client Operations
 | Function | Description |
@@ -509,7 +402,7 @@ src/
 │   ├── serde_impl.rs   # Serde for crypto types
 │   └── mod.rs
 ├── sdk/
-│   ├── mod.rs          # TrxClient and phase traits
+│   ├── mod.rs          # TrxMinion and phase traits
 │   ├── setup.rs        # SetupPhase implementation
 │   ├── validator.rs    # ValidatorPhase implementation
 │   ├── client.rs       # ClientPhase implementation

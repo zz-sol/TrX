@@ -264,7 +264,7 @@ pub trait SetupManager<B: PairingBackend<Scalar = Fr>> {
     /// This is the "DKG" step but it's non-interactive - just aggregation of published keys.
     fn aggregate_epoch_keys(
         &self,
-        validator_keypairs: Vec<ValidatorKeyPair<B>>,
+        validator_public_keys: Vec<tess::PublicKey<B>>,
         threshold: u32,
         setup: Arc<TrustedSetup<B>>,
     ) -> Result<EpochKeys<B>, TrxError>;
@@ -310,15 +310,15 @@ impl<B: PairingBackend<Scalar = Fr>> SetupManager<B> for TrxCrypto<B> {
     #[instrument(
         level = "info",
         skip_all,
-        fields(num_validators = validator_keypairs.len(), threshold)
+        fields(num_validators = validator_public_keys.len(), threshold)
     )]
     fn aggregate_epoch_keys(
         &self,
-        validator_keypairs: Vec<ValidatorKeyPair<B>>,
+        validator_public_keys: Vec<tess::PublicKey<B>>,
         threshold: u32,
         setup: Arc<TrustedSetup<B>>,
     ) -> Result<EpochKeys<B>, TrxError> {
-        let parties = validator_keypairs.len();
+        let parties = validator_public_keys.len();
         if parties == 0 {
             return Err(TrxError::InvalidConfig("validators cannot be empty".into()));
         }
@@ -335,25 +335,15 @@ impl<B: PairingBackend<Scalar = Fr>> SetupManager<B> for TrxCrypto<B> {
             )));
         }
 
-        // Extract public keys and build validator shares map
-        let mut public_keys = Vec::with_capacity(parties);
-        let mut validator_shares = HashMap::new();
-
-        for keypair in validator_keypairs {
-            public_keys.push(keypair.public_key);
-            validator_shares.insert(keypair.validator_id, keypair.secret_share);
-        }
-
         // Aggregate the public keys deterministically
         // This is the non-interactive "DKG" - just aggregation of published public keys
-        let agg_key = self
-            .tess_scheme
-            .aggregate_public_key(&public_keys, &self.params, parties)?;
+        let agg_key =
+            self.tess_scheme
+                .aggregate_public_key(&validator_public_keys, &self.params, parties)?;
 
         Ok(EpochKeys {
             epoch_id: 0,
             public_key: PublicKey { agg_key },
-            // validator_shares,
             setup,
         })
     }

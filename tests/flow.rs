@@ -37,7 +37,12 @@ fn generate_epoch_keys(
         .collect::<Vec<_>>();
 
     // Phase 2: Aggregate the published public keys (non-interactive)
-    let epoch_keys = trx.aggregate_epoch_keys(validator_keypairs, threshold, setup)?;
+    // Only public keys are needed for aggregation
+    let public_keys = validator_keypairs
+        .into_iter()
+        .map(|kp| kp.public_key)
+        .collect();
+    let epoch_keys = trx.aggregate_epoch_keys(public_keys, threshold, setup)?;
 
     Ok((epoch_keys, validator_secret_keys))
 }

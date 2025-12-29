@@ -65,7 +65,7 @@
 //! mempool systems:
 //!
 //! ```rust,no_run
-//! use trx::TrxClient;
+//! use trx::TrxMinion;
 //! use tess::PairingEngine;
 //! use ed25519_dalek::SigningKey;
 //! use std::sync::Arc;
@@ -74,23 +74,23 @@
 //!
 //! let mut rng = thread_rng();
 //!
-//! // Create client (5 validators, 3 threshold)
-//! let client = TrxClient::<PairingEngine>::new(&mut rng, 5, 3)?;
+//! // Create minion helper (5 validators, 3 threshold)
+//! let minion = TrxMinion::<PairingEngine>::new(&mut rng, 5, 3)?;
 //!
 //! // Phase 1: Setup
-//! let setup = Arc::new(client.setup().generate_trusted_setup(&mut rng, 128, 1000)?);
+//! let setup = Arc::new(minion.setup().generate_trusted_setup(&mut rng, 128, 1000)?);
 //!
 //! // Phase 2: Silent key generation
 //! let validators: Vec<u32> = (0..5).collect();
 //! let validator_keypairs: Vec<_> = validators
 //!     .iter()
-//!     .map(|&id| client.validator().keygen_single_validator(&mut rng, id))
+//!     .map(|&id| minion.validator().keygen_single_validator(&mut rng, id))
 //!     .collect::<Result<Vec<_>, _>>()?;
-//! let epoch_keys = client.setup().aggregate_epoch_keys(validator_keypairs, 3, setup.clone())?;
+//! let epoch_keys = minion.setup().aggregate_epoch_keys(validator_keypairs, 3, setup.clone())?;
 //!
 //! // Phase 3: Client encryption
 //! let signing_key = SigningKey::generate(&mut rng);
-//! let encrypted_tx = client.client().encrypt_transaction(
+//! let encrypted_tx = minion.client().encrypt_transaction(
 //!     &epoch_keys.public_key,
 //!     b"secret transaction data",
 //!     b"public metadata",
@@ -98,8 +98,8 @@
 //! )?;
 //!
 //! // Phase 4: Mempool
-//! let mut mempool = client.mempool().create(1000);
-//! client.mempool().add_transaction(&mut mempool, encrypted_tx)?;
+//! let mut mempool = minion.mempool().create(1000);
+//! minion.mempool().add_transaction(&mut mempool, encrypted_tx)?;
 //!
 //! // See examples/sdk_example.rs for complete workflow
 //! # Ok(())
@@ -240,7 +240,7 @@ pub use crypto::trx_crypto::{
 pub use mempool::EncryptedMempool;
 pub use network::messages::TrxMessage;
 pub use sdk::{
-    ClientPhase, DecryptionPhase, MempoolPhase, ProposerPhase, SetupPhase, TrxClient,
+    ClientPhase, DecryptionPhase, MempoolPhase, ProposerPhase, SetupPhase, TrxMinion,
     ValidatorPhase,
 };
 

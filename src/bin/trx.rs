@@ -16,7 +16,7 @@ use rand::thread_rng;
 use tess::PairingEngine;
 use trx::{
     BatchCommitment, BatchContext, DecryptionContext, EncryptedTransaction, EvalProof,
-    PartialDecryption, PublicKey, SecretKeyShare, TrustedSetup, TrxClient, ValidatorKeyPair,
+    PartialDecryption, PublicKey, SecretKeyShare, TrustedSetup, TrxMinion, ValidatorKeyPair,
 };
 
 type Backend = PairingEngine;
@@ -265,7 +265,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } => {
             println!("Generating trusted setup...");
             let mut rng = thread_rng();
-            let client = TrxClient::<Backend>::new(&mut rng, num_validators, threshold)?;
+            let client = TrxMinion::<Backend>::new(&mut rng, num_validators, threshold)?;
             let setup = client
                 .setup()
                 .generate_trusted_setup(&mut rng, batch_size, contexts)?;
@@ -283,7 +283,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } => {
             println!("Generating keypair for validator {}...", validator_id);
             let mut rng = thread_rng();
-            let client = TrxClient::<Backend>::new(&mut rng, num_validators, threshold)?;
+            let client = TrxMinion::<Backend>::new(&mut rng, num_validators, threshold)?;
             let keypair = client
                 .validator()
                 .keygen_single_validator(&mut rng, validator_id)?;
@@ -307,7 +307,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } => {
             println!("Aggregating validator public keys...");
             let mut rng = thread_rng();
-            let client = TrxClient::<Backend>::new(&mut rng, num_validators, threshold as usize)?;
+            let client = TrxMinion::<Backend>::new(&mut rng, num_validators, threshold as usize)?;
 
             let keypairs_json = fs::read_to_string(&keypairs)?;
             let validator_keypairs: Vec<ValidatorKeyPair<Backend>> =
@@ -316,8 +316,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let setup_json = fs::read_to_string(&setup)?;
             let trusted_setup: TrustedSetup<Backend> = serde_json::from_str(&setup_json)?;
 
+            // Extract only public keys for aggregation
+            let public_keys = validator_keypairs
+                .into_iter()
+                .map(|kp| kp.public_key)
+                .collect();
+
             let epoch_keys = client.setup().aggregate_epoch_keys(
-                validator_keypairs,
+                public_keys,
                 threshold,
                 std::sync::Arc::new(trusted_setup),
             )?;
@@ -337,7 +343,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } => {
             println!("Encrypting transaction...");
             let mut rng = thread_rng();
-            let client = TrxClient::<Backend>::new(&mut rng, num_validators, threshold)?;
+            let client = TrxMinion::<Backend>::new(&mut rng, num_validators, threshold)?;
 
             let pk_json = fs::read_to_string(&public_key)?;
             let pk: PublicKey<Backend> = serde_json::from_str(&pk_json)?;
@@ -374,7 +380,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } => {
             println!("Computing batch commitment...");
             let mut rng = thread_rng();
-            let client = TrxClient::<Backend>::new(&mut rng, num_validators, threshold)?;
+            let client = TrxMinion::<Backend>::new(&mut rng, num_validators, threshold)?;
 
             let batch_json = fs::read_to_string(&batch)?;
             let batch_txs: Vec<EncryptedTransaction<Backend>> = serde_json::from_str(&batch_json)?;
@@ -410,7 +416,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } => {
             println!("Generating partial decryption...");
             let mut rng = thread_rng();
-            let client = TrxClient::<Backend>::new(&mut rng, num_validators, threshold)?;
+            let client = TrxMinion::<Backend>::new(&mut rng, num_validators, threshold)?;
 
             let share_json = fs::read_to_string(&secret_share)?;
             let secret: SecretKeyShare<Backend> = serde_json::from_str(&share_json)?;
@@ -454,7 +460,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } => {
             println!("Decrypting batch...");
             let mut rng = thread_rng();
-            let client = TrxClient::<Backend>::new(&mut rng, num_validators, threshold as usize)?;
+            let client = TrxMinion::<Backend>::new(&mut rng, num_validators, threshold as usize)?;
 
             let batch_json = fs::read_to_string(&batch)?;
             let batch_txs: Vec<EncryptedTransaction<Backend>> = serde_json::from_str(&batch_json)?;
@@ -535,7 +541,7 @@ fn run_demo(
 
     // Phase 1: Setup
     println!("Phase 1: System Setup");
-    let client = TrxClient::<Backend>::new(&mut rng, num_validators, threshold)?;
+    let client = TrxMinion::<Backend>::new(&mut rng, num_validators, threshold)?;
     let setup = Arc::new(client.setup().generate_trusted_setup(&mut rng, 10, 100)?);
     client.setup().verify_setup(&setup)?;
     println!("  ✓ Setup complete\n");
@@ -550,11 +556,16 @@ fn run_demo(
         .map(|(id, rng)| client.validator().keygen_single_validator(rng, id as u32))
         .collect::<Result<Vec<_>, _>>()?;
 
-    let epoch_keys = client.setup().aggregate_epoch_keys(
-        validator_keypairs.clone(),
-        threshold as u32,
-        setup.clone(),
-    )?;
+    // Extract only public keys for aggregation
+    let public_keys = validator_keypairs
+        .iter()
+        .map(|kp| kp.public_key.clone())
+        .collect();
+
+    let epoch_keys =
+        client
+            .setup()
+            .aggregate_epoch_keys(public_keys, threshold as u32, setup.clone())?;
     println!("  ✓ Keys aggregated\n");
 
     let validator_secret_shares: Vec<_> = validator_keypairs

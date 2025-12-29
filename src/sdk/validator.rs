@@ -19,12 +19,12 @@ use tess::{Ciphertext as TessCiphertext, Fr, PairingBackend};
 /// # Example
 ///
 /// ```no_run
-/// use trx::TrxClient;
+/// use trx::TrxMinion;
 /// use tess::PairingEngine;
 /// use rand::thread_rng;
 ///
 /// let mut rng = thread_rng();
-/// let client = TrxClient::<PairingEngine>::new(&mut rng, 5, 3)?;
+/// let client = TrxMinion::<PairingEngine>::new(&mut rng, 5, 3)?;
 ///
 /// // Validator 0 generates their keypair independently
 /// let validator_keypair = client.validator().keygen_single_validator(&mut rng, 0)?;
@@ -70,12 +70,12 @@ impl<'a, B: PairingBackend<Scalar = Fr>> ValidatorPhase<'a, B> {
     /// # Example
     ///
     /// ```no_run
-    /// use trx::TrxClient;
+    /// use trx::TrxMinion;
     /// use tess::PairingEngine;
     /// use rand::thread_rng;
     ///
     /// let mut rng = thread_rng();
-    /// let client = TrxClient::<PairingEngine>::new(&mut rng, 100, 67)?;
+    /// let client = TrxMinion::<PairingEngine>::new(&mut rng, 100, 67)?;
     ///
     /// // Each validator runs this independently
     /// let validator_0_keypair = client.validator().keygen_single_validator(&mut rng, 0)?;
@@ -121,13 +121,13 @@ impl<'a, B: PairingBackend<Scalar = Fr>> ValidatorPhase<'a, B> {
     /// # Example
     ///
     /// ```no_run
-    /// use trx::TrxClient;
+    /// use trx::TrxMinion;
     /// use tess::PairingEngine;
     /// use trx::DecryptionContext;
     /// use rand::thread_rng;
     ///
     /// let mut rng = thread_rng();
-    /// let client = TrxClient::<PairingEngine>::new(&mut rng, 5, 3)?;
+    /// let client = TrxMinion::<PairingEngine>::new(&mut rng, 5, 3)?;
     ///
     /// # let secret_share = todo!();
     /// # let commitment = todo!();
@@ -187,13 +187,13 @@ impl<'a, B: PairingBackend<Scalar = Fr>> ValidatorPhase<'a, B> {
     /// # Example
     ///
     /// ```no_run
-    /// use trx::TrxClient;
+    /// use trx::TrxMinion;
     /// use tess::PairingEngine;
     /// use std::collections::HashMap;
     /// use rand::thread_rng;
     ///
     /// let mut rng = thread_rng();
-    /// let client = TrxClient::<PairingEngine>::new(&mut rng, 5, 3)?;
+    /// let client = TrxMinion::<PairingEngine>::new(&mut rng, 5, 3)?;
     ///
     /// # let partial_decryption = todo!();
     /// # let commitment = todo!();

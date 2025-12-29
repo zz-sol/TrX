@@ -16,22 +16,22 @@
 //! ## Quick Start
 //!
 //! ```no_run
-//! use trx::{TrxClient, SetupPhase, ValidatorPhase, ClientPhase};
+//! use trx::{TrxMinion, SetupPhase, ValidatorPhase, ClientPhase};
 //! use tess::PairingEngine;
 //! use rand::thread_rng;
 //!
 //! // Phase 1: Setup
 //! let mut rng = thread_rng();
-//! let client = TrxClient::<PairingEngine>::new(&mut rng, 100, 67)?;
-//! let setup = client.setup().generate_trusted_setup(&mut rng, 1000, 100)?;
+//! let minion = TrxMinion::<PairingEngine>::new(&mut rng, 100, 67)?;
+//! let setup = minion.setup().generate_trusted_setup(&mut rng, 1000, 100)?;
 //!
 //! // Phase 2: Validator key generation
-//! let keypair = client.validator().keygen_single_validator(&mut rng, 0)?;
+//! let keypair = minion.validator().keygen_single_validator(&mut rng, 0)?;
 //!
 //! // Phase 3: Client encryption (requires epoch key and signing key)
 //! # let epoch_key = todo!();
 //! # let signing_key = todo!();
-//! let tx = client.client().encrypt_transaction(
+//! let tx = minion.client().encrypt_transaction(
 //!     &epoch_key,
 //!     b"transaction payload",
 //!     b"metadata",
@@ -59,9 +59,10 @@ use tess::{Fr, PairingBackend};
 
 /// Main SDK entry point providing access to all phases of the encrypted mempool.
 ///
-/// The `TrxClient` is generic over the pairing backend `B`, allowing you to use
-/// different pairing-friendly curves. The default backend is `tess::PairingEngine`
-/// which uses BLST for BLS12-381 pairing operations.
+/// The `TrxMinion` is a helper struct that wraps all SDK phases and provides
+/// convenient access to the full TrX protocol workflow. It's generic over the
+/// pairing backend `B`, allowing you to use different pairing-friendly curves.
+/// The default backend is `tess::PairingEngine` which uses BLST for BLS12-381.
 ///
 /// # Type Parameters
 ///
@@ -70,23 +71,23 @@ use tess::{Fr, PairingBackend};
 /// # Example
 ///
 /// ```no_run
-/// use trx::TrxClient;
+/// use trx::TrxMinion;
 /// use tess::PairingEngine;
 /// use rand::thread_rng;
 ///
 /// let mut rng = thread_rng();
-/// let client = TrxClient::<PairingEngine>::new(&mut rng, 100, 67)?;
+/// let minion = TrxMinion::<PairingEngine>::new(&mut rng, 100, 67)?;
 /// # Ok::<(), trx::TrxError>(())
 /// ```
-pub struct TrxClient<B: PairingBackend<Scalar = Fr>> {
+pub struct TrxMinion<B: PairingBackend<Scalar = Fr>> {
     crypto: TrxCrypto<B>,
 }
 
-impl<B: PairingBackend<Scalar = Fr>> TrxClient<B>
+impl<B: PairingBackend<Scalar = Fr>> TrxMinion<B>
 where
     B::G1: PartialEq,
 {
-    /// Creates a new TrX client with the specified network parameters.
+    /// Creates a new TrX minion with the specified network parameters.
     ///
     /// # Arguments
     ///
@@ -101,13 +102,13 @@ where
     /// # Example
     ///
     /// ```no_run
-    /// use trx::TrxClient;
+    /// use trx::TrxMinion;
     /// use tess::PairingEngine;
     /// use rand::thread_rng;
     ///
     /// let mut rng = thread_rng();
     /// // 100 validators, 67 needed for threshold (2/3 majority)
-    /// let client = TrxClient::<PairingEngine>::new(&mut rng, 100, 67)?;
+    /// let minion = TrxMinion::<PairingEngine>::new(&mut rng, 100, 67)?;
     /// # Ok::<(), trx::TrxError>(())
     /// ```
     pub fn new(
