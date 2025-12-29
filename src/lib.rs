@@ -25,8 +25,8 @@
 //! ├──────────────────────────────────────────────────────────────┤
 //! │  tx_enc          │ Transaction encryption & batch decryption │
 //! │  commitment      │ KZG commitments & evaluation proofs       │
-//! │  setup           │ Trusted setup & silent key generation    │
-//! │  signatures      │ Ed25519 (client) & BLS (validator) sigs  │
+//! │  setup           │ Trusted setup & silent key generation     │
+//! │  signatures      │ Ed25519 (client) & BLS (validator) sigs   │
 //! │  pre_computation │ Caching layer for KZG operations          │
 //! │  mempool         │ Encrypted transaction queue               │
 //! │  transactions    │ Network protocol messages                 │
@@ -59,7 +59,56 @@
 //! - [`PrecomputationEngine`]: Cache for expensive KZG computations
 //! - [`TrxMessage`]: Network protocol message types
 //!
-//! # Quick Start
+//! # SDK Usage (Recommended)
+//!
+//! The [`sdk`] module provides a high-level, phase-based API for building encrypted
+//! mempool systems:
+//!
+//! ```rust,no_run
+//! use trx::sdk::TrxClient;
+//! use tess::PairingEngine;
+//! use ed25519_dalek::SigningKey;
+//! use std::sync::Arc;
+//! # use rand::thread_rng;
+//! # fn main() -> Result<(), trx::TrxError> {
+//!
+//! let mut rng = thread_rng();
+//!
+//! // Create client (5 validators, 3 threshold)
+//! let client = TrxClient::<PairingEngine>::new(&mut rng, 5, 3)?;
+//!
+//! // Phase 1: Setup
+//! let setup = Arc::new(client.setup().generate_trusted_setup(&mut rng, 128, 1000)?);
+//!
+//! // Phase 2: Silent key generation
+//! let validators: Vec<u32> = (0..5).collect();
+//! let validator_keypairs: Vec<_> = validators
+//!     .iter()
+//!     .map(|&id| client.validator().keygen_single_validator(&mut rng, id))
+//!     .collect::<Result<Vec<_>, _>>()?;
+//! let epoch_keys = client.setup().aggregate_epoch_keys(validator_keypairs, 3, setup.clone())?;
+//!
+//! // Phase 3: Client encryption
+//! let signing_key = SigningKey::generate(&mut rng);
+//! let encrypted_tx = client.client().encrypt_transaction(
+//!     &epoch_keys.public_key,
+//!     b"secret transaction data",
+//!     b"public metadata",
+//!     &signing_key,
+//! )?;
+//!
+//! // Phase 4: Mempool
+//! let mut mempool = client.mempool().create(1000);
+//! client.mempool().add_transaction(&mut mempool, encrypted_tx)?;
+//!
+//! // See examples/sdk_example.rs for complete workflow
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # Low-Level API
+//!
+//! For advanced use cases, you can use the trait-based API directly:
 //!
 //! ```rust,no_run
 //! use trx::*;
@@ -135,6 +184,7 @@ mod core;
 mod crypto;
 mod mempool;
 mod network;
+pub mod sdk;
 mod utils;
 
 pub use core::errors::*;
@@ -145,3 +195,7 @@ pub use crypto::signatures::*;
 pub use crypto::trx_crypto::*;
 pub use mempool::*;
 pub use network::messages::*;
+pub use sdk::{
+    ClientPhase, DecryptionPhase, MempoolPhase, ProposerPhase, SetupPhase, TrxClient,
+    ValidatorPhase,
+};

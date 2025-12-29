@@ -12,6 +12,9 @@ pub type TxPublicVerifyKey = Ed25519VerifyKey;
 /// Client's Ed25519 signature over transaction ciphertext.
 pub type TxSignature = Ed25519Signature;
 
+/// Result of decrypting a transaction: Ok(plaintext) or Err(error message).
+pub type DecryptionResult = tess::DecryptionResult;
+
 /// Public encryption key wrapper.
 #[derive(Clone, Debug)]
 pub struct PublicKey<B: PairingBackend<Scalar = Fr>> {

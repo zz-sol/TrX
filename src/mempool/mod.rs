@@ -132,4 +132,13 @@ impl<B: PairingBackend<Scalar = Fr>> EncryptedMempool<B> {
         let take = max_size.min(self.encrypted_txs.len());
         self.encrypted_txs.drain(0..take).collect()
     }
+
+    /// Returns the current number of transactions in the mempool.
+    ///
+    /// # Returns
+    ///
+    /// The number of pending transactions currently stored.
+    pub fn size(&self) -> usize {
+        self.encrypted_txs.len()
+    }
 }
