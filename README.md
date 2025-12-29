@@ -39,7 +39,7 @@ TrX provides a complete cryptographic infrastructure for confidential transactio
 - **BLS signatures** for validator coordination
 
 ## End-to-End Workflow
-1. **Setup**: Generate a trusted setup (SRS + kappa contexts).
+1. **Setup**: Generate a global setup (SRS), then derive an epoch setup (kappa contexts).
 2. **Silent Setup**: Each validator independently generates their own key pair, then public keys are aggregated non-interactively.
 3. **Client encrypt + sign**: Client encrypts payload and signs
    `hash(ciphertext.payload || associated_data)` with Ed25519.
@@ -79,7 +79,7 @@ cargo build --release --bin trx
 ```
 
 Available commands:
-- `setup` - Generate trusted setup
+- `setup` - Generate epoch setup (global SRS + kappa contexts)
 - `keygen` - Generate validator keys (silent setup)
 - `aggregate-keys` - Aggregate validator public keys
 - `encrypt` - Encrypt a transaction
@@ -98,7 +98,6 @@ The SDK provides a high-level, phase-based API that simplifies encrypted mempool
 use trx::TrxMinion;
 use tess::PairingEngine;
 use ed25519_dalek::SigningKey;
-use std::sync::Arc;
 use rand::thread_rng;
 
 fn main() -> Result<(), trx::TrxError> {
@@ -108,7 +107,10 @@ fn main() -> Result<(), trx::TrxError> {
     let client = TrxMinion::<PairingEngine>::new(&mut rng, 5, 3)?;
 
     // Phase 1: Setup
-    let setup = Arc::new(client.setup().generate_trusted_setup(&mut rng, 128, 1000)?);
+    let global_setup = client.setup().generate_global_setup(&mut rng, 128)?;
+    let setup = client
+        .setup()
+        .generate_epoch_setup(&mut rng, 1, 1000, global_setup.clone())?;
 
     // Phase 2: Silent key generation
     let validators: Vec<u32> = (0..5).collect();
@@ -191,8 +193,8 @@ mempool.add_encrypted_tx(tx)?;
 ```rust
 let batch = mempool.get_batch(32);
 let context = DecryptionContext { block_height: 100, context_index: 0 };
-let commitment = TrxCrypto::<PairingEngine>::compute_digest(&batch, &context, &setup)?;
-let eval_proofs = TrxCrypto::<PairingEngine>::compute_eval_proofs(&batch, &context, &setup)?;
+let commitment = TrxCrypto::<PairingEngine>::compute_digest(&batch, &context, &epoch_setup)?;
+let eval_proofs = TrxCrypto::<PairingEngine>::compute_eval_proofs(&batch, &context, &epoch_setup)?;
 // Broadcast commitment and eval_proofs with the proposal
 ```
 
@@ -222,7 +224,7 @@ let results = trx.combine_and_decrypt(
     partials,
     batch_ctx,
     threshold as u32,
-    &setup,
+    &epoch_setup,
     &epoch.public_key.agg_key,
 )?;
 // results[i].plaintext contains the decrypted payload
@@ -250,7 +252,7 @@ let share_json = serde_json::to_string(&partial_decryption)?;
 
 Serializable types include:
 - **Core types**: `EncryptedTransaction`, `PartialDecryption`, `DecryptionContext`, `BatchCommitment`, `EvalProof`
-- **Crypto types**: `TrustedSetup`, `KappaSetup`, `EpochKeys`, `ValidatorKeyPair`, `PublicKey`, `SecretKeyShare`
+- **Crypto types**: `GlobalSetup`, `EpochSetup`, `KappaSetup`, `EpochKeys`, `ValidatorKeyPair`, `PublicKey`, `SecretKeyShare`, `TrustedSetup` (legacy)
 - **Tess types**: `Ciphertext`, `AggregateKey`, `SRS`, `Params`, `PublicKey`, `SecretKey`
 
 This enables:
@@ -308,7 +310,7 @@ leader    -> combine_and_decrypt (verifies KZG proofs, aggregates shares)
 
 The SDK provides phase-based interfaces in [src/sdk](src/sdk):
 - **`TrxMinion`**: Main client wrapping all phases
-- **`SetupPhase`**: Trusted setup and key aggregation
+- **`SetupPhase`**: Global/epoch setup and key aggregation
 - **`ValidatorPhase`**: Silent key generation
 - **`ClientPhase`**: Transaction encryption
 - **`MempoolPhase`**: Transaction queue management
@@ -323,9 +325,11 @@ All core functionality is implemented in [src/crypto/trx_crypto.rs](src/crypto/t
 | Function | Description |
 |----------|-------------|
 | `TrxCrypto::new(rng, parties, threshold)` | Initialize the cryptographic system |
-| `generate_trusted_setup(rng, max_batch_size, max_contexts)` | Generate SRS and kappa contexts |
+| `generate_global_setup(rng, max_batch_size)` | Generate SRS (reusable across epochs) |
+| `generate_epoch_setup(rng, epoch_id, max_contexts, global_setup)` | Derive kappa contexts for an epoch |
+| `generate_trusted_setup(rng, max_batch_size, max_contexts)` | Legacy: generate SRS + kappa contexts |
 | `keygen_single_validator(rng, validator_id)` | Each validator independently generates their own key pair (silent setup) |
-| `aggregate_epoch_keys(public_keys, threshold, setup)` | Non-interactively aggregate validator public keys into epoch keys |
+| `aggregate_epoch_keys(public_keys, threshold, epoch_setup)` | Non-interactively aggregate validator public keys into epoch keys |
 
 #### Client Operations
 | Function | Description |
@@ -336,10 +340,10 @@ All core functionality is implemented in [src/crypto/trx_crypto.rs](src/crypto/t
 #### Batch Operations
 | Function | Return Type | Description |
 |----------|-------------|-------------|
-| `compute_digest(batch, context, setup)` | `BatchCommitment` | KZG commit to batch polynomial |
-| `compute_eval_proofs(batch, context, setup)` | `Vec<EvalProof>` | Generate per-tx KZG openings |
+| `compute_digest(batch, context, epoch_setup)` | `BatchCommitment` | KZG commit to batch polynomial |
+| `compute_eval_proofs(batch, context, epoch_setup)` | `Vec<EvalProof>` | Generate per-tx KZG openings |
 | `generate_partial_decryption(share, commitment, context, tx_index, ciphertext)` | `PartialDecryption` | Validator creates decryption share |
-| `combine_and_decrypt(partials, batch_ctx, threshold, setup, agg_key)` | `Vec<DecryptionResult>` | Verify proofs and combine shares |
+| `combine_and_decrypt(partials, batch_ctx, threshold, epoch_setup, agg_key)` | `Vec<DecryptionResult>` | Verify proofs and combine shares |
 
 #### Validator Signatures (BLS)
 
@@ -380,7 +384,7 @@ The `TrxMessage` enum ([src/network/messages.rs](src/network/messages.rs)) defin
 
 ### System Requirements
 - `threshold < parties` (typically `parties` is a power of two for Tess)
-- Batch size constraint: `batch.len() + 1 <= setup.srs.powers_of_g.len()`
+- Batch size constraint: `batch.len() + 1 <= epoch_setup.srs().powers_of_g.len()`
 - Ed25519 signatures use 32-byte Blake3 hash
 
 ## Project Structure
@@ -435,4 +439,3 @@ at your option.
 - [TrX: Encrypted Mempools in High Performance BFT Protocols](https://eprint.iacr.org/2025/2032)
 - [ePrint Archive Paper: Threshold Encryption with Silent Setup](https://eprint.iacr.org/2024/263)
 - [Tess implementation](https://github.com/zz-sol/Tess)
-

@@ -4,7 +4,7 @@
 //! partial decryptions from validators are aggregated to recover plaintexts.
 
 use crate::{
-    BatchContext, BatchDecryption, DecryptionResult, PartialDecryption, PublicKey, TrustedSetup,
+    BatchContext, BatchDecryption, DecryptionResult, EpochSetup, PartialDecryption, PublicKey,
     TrxCrypto, TrxError,
 };
 use tess::{Fr, PairingBackend};
@@ -76,7 +76,7 @@ where
     ///   (must have at least `threshold + 1` shares per transaction)
     /// * `batch_ctx` - Batch context containing batch, context, commitment, and proofs
     /// * `threshold` - Minimum number of shares required (t in t-of-n threshold)
-    /// * `setup` - The trusted setup used for the epoch
+    /// * `setup` - The epoch setup used for the epoch
     /// * `agg_key` - The aggregate public key from the epoch
     ///
     /// # Security Considerations
@@ -170,7 +170,7 @@ where
         partial_decryptions: Vec<PartialDecryption<B>>,
         batch_ctx: BatchContext<'b, B>,
         threshold: u32,
-        setup: &TrustedSetup<B>,
+        setup: &EpochSetup<B>,
         agg_key: &PublicKey<B>,
     ) -> Result<Vec<DecryptionResult>, TrxError> {
         self.crypto.combine_and_decrypt(

@@ -4,7 +4,9 @@ use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::sync::{atomic::AtomicBool, Arc};
 use tess::{CurvePoint, Fr, PairingBackend, SRS};
 
-use super::trx_crypto::{EpochKeys, KappaSetup, TrustedSetup, ValidatorKeyPair};
+use super::trx_crypto::{
+    EpochKeys, EpochSetup, GlobalSetup, KappaSetup, TrustedSetup, ValidatorKeyPair,
+};
 use crate::core::types::{PublicKey, SecretKeyShare};
 
 // TrustedSetup
@@ -37,6 +39,40 @@ impl<'de, B: PairingBackend<Scalar = Fr>> Deserialize<'de> for TrustedSetup<B> {
         Ok(TrustedSetup {
             srs: helper.srs,
             kappa_setups: helper.kappa_setups,
+        })
+    }
+}
+
+// GlobalSetup
+impl<B: PairingBackend<Scalar = Fr>> Serialize for GlobalSetup<B> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("GlobalSetup", 2)?;
+        state.serialize_field("params", &self.params)?;
+        state.serialize_field("srs", &self.srs)?;
+        state.end()
+    }
+}
+
+impl<'de, B: PairingBackend<Scalar = Fr>> Deserialize<'de> for GlobalSetup<B> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(bound(deserialize = ""))]
+        struct Helper<B: PairingBackend<Scalar = Fr>> {
+            params: tess::Params<B>,
+            srs: SRS<B>,
+        }
+
+        let helper = Helper::deserialize(deserializer)?;
+        Ok(GlobalSetup {
+            params: helper.params,
+            srs: helper.srs,
         })
     }
 }
@@ -98,6 +134,43 @@ impl<'de, B: PairingBackend> Deserialize<'de> for KappaSetup<B> {
     }
 }
 
+// EpochSetup
+impl<B: PairingBackend<Scalar = Fr>> Serialize for EpochSetup<B> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("EpochSetup", 3)?;
+        state.serialize_field("epoch_id", &self.epoch_id)?;
+        state.serialize_field("kappa_setups", &self.kappa_setups)?;
+        state.serialize_field("global_setup", &*self.global_setup)?;
+        state.end()
+    }
+}
+
+impl<'de, B: PairingBackend<Scalar = Fr>> Deserialize<'de> for EpochSetup<B> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(bound(deserialize = ""))]
+        struct Helper<B: PairingBackend<Scalar = Fr>> {
+            epoch_id: u64,
+            kappa_setups: Vec<KappaSetup<B>>,
+            global_setup: GlobalSetup<B>,
+        }
+
+        let helper = Helper::deserialize(deserializer)?;
+        Ok(EpochSetup {
+            epoch_id: helper.epoch_id,
+            kappa_setups: helper.kappa_setups,
+            global_setup: Arc::new(helper.global_setup),
+        })
+    }
+}
+
 // EpochKeys
 impl<B: PairingBackend<Scalar = Fr>> Serialize for EpochKeys<B> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -108,7 +181,7 @@ impl<B: PairingBackend<Scalar = Fr>> Serialize for EpochKeys<B> {
         let mut state = serializer.serialize_struct("EpochKeys", 3)?;
         state.serialize_field("epoch_id", &self.epoch_id)?;
         state.serialize_field("public_key", &self.public_key)?;
-        state.serialize_field("setup", &*self.setup)?;
+        state.serialize_field("epoch_setup", &*self.epoch_setup)?;
         state.end()
     }
 }
@@ -123,14 +196,14 @@ impl<'de, B: PairingBackend<Scalar = Fr>> Deserialize<'de> for EpochKeys<B> {
         struct Helper<B: PairingBackend<Scalar = Fr>> {
             epoch_id: u64,
             public_key: PublicKey<B>,
-            setup: TrustedSetup<B>,
+            epoch_setup: EpochSetup<B>,
         }
 
         let helper = Helper::deserialize(deserializer)?;
         Ok(EpochKeys {
             epoch_id: helper.epoch_id,
             public_key: helper.public_key,
-            setup: Arc::new(helper.setup),
+            epoch_setup: Arc::new(helper.epoch_setup),
         })
     }
 }

@@ -16,7 +16,7 @@ use rand::thread_rng;
 use tess::PairingEngine;
 use trx::{
     BatchCommitment, BatchContext, DecryptionContext, EncryptedTransaction, EvalProof,
-    PartialDecryption, PublicKey, SecretKeyShare, TrustedSetup, TrxMinion, ValidatorKeyPair,
+    EpochSetup, PartialDecryption, PublicKey, SecretKeyShare, TrxMinion, ValidatorKeyPair,
 };
 
 type Backend = PairingEngine;
@@ -31,7 +31,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Generate trusted setup
+    /// Generate epoch setup (global setup + randomized kappa contexts)
     Setup {
         /// Maximum batch size
         #[arg(long)]
@@ -42,8 +42,12 @@ enum Commands {
         contexts: usize,
 
         /// Output file (JSON)
-        #[arg(long, short = 'o', default_value = "setup.json")]
+        #[arg(long, short = 'o', default_value = "epoch_setup.json")]
         output: PathBuf,
+
+        /// Epoch identifier
+        #[arg(long, default_value = "1")]
+        epoch_id: u64,
 
         /// Number of validators
         #[arg(long, default_value = "5")]
@@ -83,7 +87,7 @@ enum Commands {
         #[arg(long)]
         threshold: u32,
 
-        /// Trusted setup file
+        /// Epoch setup file
         #[arg(long)]
         setup: PathBuf,
 
@@ -137,7 +141,7 @@ enum Commands {
         #[arg(long, default_value = "0")]
         context_index: u64,
 
-        /// Trusted setup file
+        /// Epoch setup file
         #[arg(long)]
         setup: PathBuf,
 
@@ -207,7 +211,7 @@ enum Commands {
         #[arg(long)]
         threshold: u32,
 
-        /// Trusted setup file
+        /// Epoch setup file
         #[arg(long)]
         setup: PathBuf,
 
@@ -260,19 +264,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             batch_size,
             contexts,
             output,
+            epoch_id,
             num_validators,
             threshold,
         } => {
-            println!("Generating trusted setup...");
+            println!("Generating epoch setup...");
             let mut rng = thread_rng();
             let client = TrxMinion::<Backend>::new(&mut rng, num_validators, threshold)?;
-            let setup = client
-                .setup()
-                .generate_trusted_setup(&mut rng, batch_size, contexts)?;
+            let global_setup = client.setup().generate_global_setup(&mut rng, batch_size)?;
+            let setup = client.setup().generate_epoch_setup(
+                &mut rng,
+                epoch_id,
+                contexts,
+                global_setup.clone(),
+            )?;
 
-            let json = serde_json::to_string_pretty(&setup)?;
+            let json = serde_json::to_string_pretty(&*setup)?;
             fs::write(&output, json)?;
-            println!("✓ Trusted setup written to {}", output.display());
+            println!("✓ Epoch setup written to {}", output.display());
         }
 
         Commands::Keygen {
@@ -314,7 +323,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 serde_json::from_str(&keypairs_json)?;
 
             let setup_json = fs::read_to_string(&setup)?;
-            let trusted_setup: TrustedSetup<Backend> = serde_json::from_str(&setup_json)?;
+            let epoch_setup: EpochSetup<Backend> = serde_json::from_str(&setup_json)?;
 
             // Extract only public keys for aggregation
             let public_keys = validator_keypairs
@@ -325,7 +334,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let epoch_keys = client.setup().aggregate_epoch_keys(
                 public_keys,
                 threshold,
-                std::sync::Arc::new(trusted_setup),
+                std::sync::Arc::new(epoch_setup),
             )?;
 
             let json = serde_json::to_string_pretty(&epoch_keys)?;
@@ -386,7 +395,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let batch_txs: Vec<EncryptedTransaction<Backend>> = serde_json::from_str(&batch_json)?;
 
             let setup_json = fs::read_to_string(&setup)?;
-            let trusted_setup: TrustedSetup<Backend> = serde_json::from_str(&setup_json)?;
+            let epoch_setup: EpochSetup<Backend> = serde_json::from_str(&setup_json)?;
 
             let context = DecryptionContext {
                 block_height,
@@ -396,7 +405,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let commitment =
                 client
                     .proposer()
-                    .compute_digest(&batch_txs, &context, &trusted_setup)?;
+                    .compute_digest(&batch_txs, &context, &epoch_setup)?;
 
             let json = serde_json::to_string_pretty(&commitment)?;
             fs::write(&output, json)?;
@@ -470,7 +479,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 serde_json::from_str(&shares_json)?;
 
             let setup_json = fs::read_to_string(&setup)?;
-            let trusted_setup: TrustedSetup<Backend> = serde_json::from_str(&setup_json)?;
+            let epoch_setup: EpochSetup<Backend> = serde_json::from_str(&setup_json)?;
 
             let pk_json = fs::read_to_string(&public_key)?;
             let pk: PublicKey<Backend> = serde_json::from_str(&pk_json)?;
@@ -497,7 +506,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 partial_decryptions,
                 batch_ctx,
                 threshold,
-                &trusted_setup,
+                &epoch_setup,
                 &pk,
             )?;
 
@@ -531,7 +540,6 @@ fn run_demo(
 ) -> Result<(), Box<dyn std::error::Error>> {
     use rand::{rngs::StdRng, SeedableRng};
     use std::collections::HashMap;
-    use std::sync::Arc;
 
     println!("========================================");
     println!("      TrX Encrypted Mempool Demo");
@@ -542,8 +550,11 @@ fn run_demo(
     // Phase 1: Setup
     println!("Phase 1: System Setup");
     let client = TrxMinion::<Backend>::new(&mut rng, num_validators, threshold)?;
-    let setup = Arc::new(client.setup().generate_trusted_setup(&mut rng, 10, 100)?);
-    client.setup().verify_setup(&setup)?;
+    let global_setup = client.setup().generate_global_setup(&mut rng, 10)?;
+    let setup = client
+        .setup()
+        .generate_epoch_setup(&mut rng, 1, 100, global_setup.clone())?;
+    client.setup().verify_epoch_setup(&setup)?;
     println!("  ✓ Setup complete\n");
 
     // Phase 2: Validator keygen

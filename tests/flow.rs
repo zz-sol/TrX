@@ -20,7 +20,7 @@ fn generate_epoch_keys(
     rng: &mut impl rand::RngCore,
     parties: usize,
     threshold: u32,
-    setup: Arc<TrustedSetup<PairingEngine>>,
+    setup: Arc<EpochSetup<PairingEngine>>,
 ) -> Result<(EpochKeys<PairingEngine>, Vec<SecretKeyShare<PairingEngine>>), TrxError> {
     let validators: Vec<ValidatorId> = (0..parties as u32).collect();
 
@@ -47,6 +47,19 @@ fn generate_epoch_keys(
     Ok((epoch_keys, validator_secret_keys))
 }
 
+fn generate_epoch_setup(
+    trx: &TrxCrypto<PairingEngine>,
+    rng: &mut impl rand::RngCore,
+    max_batch_size: usize,
+    max_contexts: usize,
+) -> Arc<EpochSetup<PairingEngine>> {
+    let global_setup = trx
+        .generate_global_setup(rng, max_batch_size)
+        .expect("global setup generation failed");
+    trx.generate_epoch_setup(rng, 1, max_contexts, global_setup)
+        .expect("epoch setup generation failed")
+}
+
 #[test]
 fn happy_path_encrypt_decrypt() {
     let mut rng = thread_rng();
@@ -54,8 +67,7 @@ fn happy_path_encrypt_decrypt() {
     let threshold = 2;
     let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
     let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
-    let setup = trx.generate_trusted_setup(&mut rng, parties, 2).unwrap();
-    let setup = std::sync::Arc::new(setup);
+    let setup = generate_epoch_setup(&trx, &mut rng, parties, 2);
     let (epoch, validator_shares) =
         generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup.clone()).unwrap();
 
@@ -110,8 +122,7 @@ fn batch_decrypt_flow() {
     let threshold = 2;
     let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
     let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
-    let setup = trx.generate_trusted_setup(&mut rng, parties, 2).unwrap();
-    let setup = std::sync::Arc::new(setup);
+    let setup = generate_epoch_setup(&trx, &mut rng, parties, 2);
     let (epoch, validator_shares) =
         generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup.clone()).unwrap();
 
@@ -174,8 +185,7 @@ fn mempool_roundtrip() {
     let threshold = 2;
     let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
     let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
-    let setup = trx.generate_trusted_setup(&mut rng, parties, 1).unwrap();
-    let setup = std::sync::Arc::new(setup);
+    let setup = generate_epoch_setup(&trx, &mut rng, parties, 1);
     let (epoch, _validator_shares) =
         generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup).unwrap();
 
@@ -204,8 +214,7 @@ fn test_context_index_bounds_checking() {
     let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
 
     // Create setup with only 2 kappa contexts
-    let setup = trx.generate_trusted_setup(&mut rng, parties, 2).unwrap();
-    let setup_arc = std::sync::Arc::new(setup);
+    let setup_arc = generate_epoch_setup(&trx, &mut rng, parties, 2);
     let (epoch, _validator_shares) =
         generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup_arc.clone()).unwrap();
 
@@ -250,7 +259,7 @@ fn test_kappa_atomic_single_use() {
     let threshold = 2;
     let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
 
-    let setup = trx.generate_trusted_setup(&mut rng, parties, 5).unwrap();
+    let setup = generate_epoch_setup(&trx, &mut rng, parties, 5);
     let kappa = &setup.kappa_setups[0];
 
     // First use should succeed
@@ -280,8 +289,7 @@ fn test_mutex_poisoning_handling() {
     let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
     let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
 
-    let setup = trx.generate_trusted_setup(&mut rng, parties, 2).unwrap();
-    let setup_arc = std::sync::Arc::new(setup);
+    let setup_arc = generate_epoch_setup(&trx, &mut rng, parties, 2);
     let (epoch, _validator_shares) =
         generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup_arc.clone()).unwrap();
 
@@ -335,13 +343,13 @@ fn test_trx_error_display() {
 }
 
 #[test]
-fn test_trusted_setup_validation() {
+fn test_epoch_setup_validation() {
     let mut rng = thread_rng();
     let parties = 4;
     let threshold = 2;
     let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
 
-    let setup = trx.generate_trusted_setup(&mut rng, parties, 10).unwrap();
+    let setup = generate_epoch_setup(&trx, &mut rng, parties, 10);
 
     // Valid indices should pass
     assert!(setup.validate_context_index(0).is_ok());
@@ -374,8 +382,7 @@ fn test_precomputation_cache_isolation() {
     let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
     let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
 
-    let setup = trx.generate_trusted_setup(&mut rng, parties, 5).unwrap();
-    let setup_arc = std::sync::Arc::new(setup);
+    let setup_arc = generate_epoch_setup(&trx, &mut rng, parties, 5);
     let (epoch, _validator_shares) =
         generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup_arc.clone()).unwrap();
 
@@ -417,8 +424,7 @@ fn test_precomputation_cache_key_includes_associated_data() {
     let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
     let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
 
-    let setup = trx.generate_trusted_setup(&mut rng, parties, 5).unwrap();
-    let setup_arc = std::sync::Arc::new(setup);
+    let setup_arc = generate_epoch_setup(&trx, &mut rng, parties, 5);
     let (epoch, _validator_shares) =
         generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup_arc.clone()).unwrap();
 
@@ -473,14 +479,14 @@ fn test_invalid_threshold_configuration() {
 }
 
 #[test]
-fn test_empty_trusted_setup_validation() {
+fn test_empty_epoch_setup_validation() {
     let mut rng = thread_rng();
     let parties = 4;
     let threshold = 2;
     let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
 
     // Generate setup with 0 kappa contexts should work (edge case)
-    let setup = trx.generate_trusted_setup(&mut rng, parties, 0).unwrap();
+    let setup = generate_epoch_setup(&trx, &mut rng, parties, 0);
 
     // Any context_index should fail for empty kappa_setups
     let result = setup.validate_context_index(0);
@@ -496,8 +502,7 @@ fn test_context_index_in_eval_proofs() {
     let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
 
     // Create setup with only 2 kappa contexts
-    let setup = trx.generate_trusted_setup(&mut rng, parties, 2).unwrap();
-    let setup_arc = std::sync::Arc::new(setup);
+    let setup_arc = generate_epoch_setup(&trx, &mut rng, parties, 2);
     let (epoch, _validator_shares) =
         generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup_arc.clone()).unwrap();
 
@@ -531,8 +536,7 @@ fn test_not_enough_shares_error() {
     let threshold = 2;
     let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
     let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
-    let setup = trx.generate_trusted_setup(&mut rng, parties, 2).unwrap();
-    let setup_arc = std::sync::Arc::new(setup);
+    let setup_arc = generate_epoch_setup(&trx, &mut rng, parties, 2);
     let (epoch, validator_shares) =
         generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup_arc.clone()).unwrap();
 
@@ -592,8 +596,7 @@ fn test_mempool_capacity_enforcement() {
     let threshold = 2;
     let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
     let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
-    let setup = trx.generate_trusted_setup(&mut rng, parties, 1).unwrap();
-    let setup_arc = std::sync::Arc::new(setup);
+    let setup_arc = generate_epoch_setup(&trx, &mut rng, parties, 1);
     let (epoch, _validator_shares) =
         generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup_arc).unwrap();
 
@@ -627,7 +630,6 @@ fn test_mempool_capacity_enforcement() {
 
 #[test]
 fn test_concurrent_kappa_usage() {
-    use std::sync::Arc;
     use std::thread;
 
     let mut rng = thread_rng();
@@ -635,7 +637,7 @@ fn test_concurrent_kappa_usage() {
     let threshold = 2;
     let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
 
-    let setup = Arc::new(trx.generate_trusted_setup(&mut rng, parties, 5).unwrap());
+    let setup = generate_epoch_setup(&trx, &mut rng, parties, 5);
 
     // Spawn multiple threads trying to use the same kappa context
     let mut handles = vec![];
@@ -668,8 +670,7 @@ fn test_batch_size_exceeds_srs() {
     let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
 
     // Create setup with very small SRS (only 2 transactions)
-    let setup = trx.generate_trusted_setup(&mut rng, 2, 5).unwrap();
-    let setup_arc = std::sync::Arc::new(setup);
+    let setup_arc = generate_epoch_setup(&trx, &mut rng, 2, 5);
     let (epoch, _validator_shares) =
         generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup_arc.clone()).unwrap();
 
@@ -706,8 +707,7 @@ fn test_empty_batch_handling() {
     let threshold = 2;
     let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
 
-    let setup = trx.generate_trusted_setup(&mut rng, parties, 5).unwrap();
-    let setup_arc = std::sync::Arc::new(setup);
+    let setup_arc = generate_epoch_setup(&trx, &mut rng, parties, 5);
 
     let context = DecryptionContext {
         block_height: 1,

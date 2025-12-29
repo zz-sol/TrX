@@ -34,12 +34,18 @@
 //! # fn example() -> Result<(), TrxError> {
 //! # let mut rng = rand::thread_rng();
 //! # let crypto = TrxCrypto::<tess::PairingEngine>::new(&mut rng, 5, 3)?;
-//! # let setup_arc = Arc::new(crypto.generate_trusted_setup(&mut rng, 128, 1000)?);
+//! # let global_setup = crypto.generate_global_setup(&mut rng, 128)?;
+//! # let setup_arc = crypto.generate_epoch_setup(&mut rng, 1, 1000, global_setup)?;
 //! # let validators: Vec<u32> = (0..5).collect();
-//! # let validator_keypairs: Vec<_> = validators.iter()
+//! # let validator_keypairs: Vec<_> = validators
+//! #     .iter()
 //! #     .map(|&id| crypto.keygen_single_validator(&mut rng, id))
 //! #     .collect::<Result<Vec<_>, _>>()?;
-//! # let epoch_keys = crypto.aggregate_epoch_keys(validator_keypairs, 3, setup_arc.clone())?;
+//! # let public_keys = validator_keypairs
+//! #     .iter()
+//! #     .map(|kp| kp.public_key.clone())
+//! #     .collect();
+//! # let epoch_keys = crypto.aggregate_epoch_keys(public_keys, 3, setup_arc.clone())?;
 //! # let batch = vec![]; // encrypted transactions
 //! let context = DecryptionContext { block_height: 1, context_index: 0 };
 //!
@@ -61,20 +67,20 @@ use tracing::instrument;
 
 use crate::utils::scalar_from_hash;
 use crate::{
-    BatchCommitment, DecryptionContext, EncryptedTransaction, EvalProof, TrustedSetup, TrxError,
+    BatchCommitment, DecryptionContext, EncryptedTransaction, EpochSetup, EvalProof, TrxError,
 };
 
 impl<B: PairingBackend<Scalar = Fr>> BatchCommitment<B> {
     /// Computes a KZG commitment over the batch polynomial.
     ///
     /// Constructs polynomial `p(x)` with coefficients `c_i = H(tx_i || context)`
-    /// and commits to it using the trusted setup's structured reference string (SRS).
+    /// and commits to it using the global setup's structured reference string (SRS).
     ///
     /// # Arguments
     ///
     /// * `batch` - Encrypted transactions to commit
     /// * `context` - Decryption context (binds commitment to specific block/epoch)
-    /// * `setup` - Trusted setup containing SRS powers
+    /// * `setup` - Epoch setup containing SRS powers
     ///
     /// # Returns
     ///
@@ -92,18 +98,18 @@ impl<B: PairingBackend<Scalar = Fr>> BatchCommitment<B> {
     pub fn compute(
         batch: &[EncryptedTransaction<B>],
         context: &DecryptionContext,
-        setup: &TrustedSetup<B>,
+        setup: &EpochSetup<B>,
     ) -> Result<Self, TrxError> {
         // Validate context index is within bounds
         setup.validate_context_index(context.context_index)?;
 
-        if batch.len() + 1 > setup.srs.powers_of_g.len() {
+        if batch.len() + 1 > setup.srs().powers_of_g.len() {
             return Err(TrxError::InvalidConfig(
                 "batch size exceeds available SRS powers".into(),
             ));
         }
         let polynomial = batch_polynomial(batch, context);
-        let com = KZG::commit_g1(&setup.srs, &polynomial)
+        let com = KZG::commit_g1(setup.srs(), &polynomial)
             .map_err(|err| TrxError::Backend(err.to_string()))?;
         Ok(Self {
             com,
@@ -122,7 +128,7 @@ impl<B: PairingBackend<Scalar = Fr>> EvalProof<B> {
     ///
     /// * `batch` - Encrypted transactions to generate proofs for
     /// * `context` - Decryption context (must match commitment context)
-    /// * `setup` - Trusted setup containing SRS for proof generation
+    /// * `setup` - Epoch setup containing SRS for proof generation
     ///
     /// # Returns
     ///
@@ -144,12 +150,12 @@ impl<B: PairingBackend<Scalar = Fr>> EvalProof<B> {
     pub fn compute_for_batch(
         batch: &[EncryptedTransaction<B>],
         context: &DecryptionContext,
-        setup: &TrustedSetup<B>,
+        setup: &EpochSetup<B>,
     ) -> Result<Vec<Self>, TrxError> {
         // Validate context index is within bounds
         setup.validate_context_index(context.context_index)?;
 
-        if batch.len() + 1 > setup.srs.powers_of_g.len() {
+        if batch.len() + 1 > setup.srs().powers_of_g.len() {
             return Err(TrxError::InvalidConfig(
                 "batch size exceeds available SRS powers".into(),
             ));
@@ -158,7 +164,7 @@ impl<B: PairingBackend<Scalar = Fr>> EvalProof<B> {
         let mut proofs = Vec::with_capacity(batch.len());
         for (idx, _) in batch.iter().enumerate() {
             let point = Fr::from_u64(idx as u64 + 1);
-            let (value, proof) = KZG::open_g1(&setup.srs, &polynomial, &point)
+            let (value, proof) = KZG::open_g1(setup.srs(), &polynomial, &point)
                 .map_err(|err| TrxError::Backend(err.to_string()))?;
             proofs.push(Self {
                 point,
@@ -230,7 +236,7 @@ fn tx_commitment_scalar<B: PairingBackend<Scalar = Fr>>(
 ///
 /// # Arguments
 ///
-/// * `setup` - Trusted setup containing SRS
+/// * `setup` - Epoch setup containing SRS
 /// * `commitment` - Claimed batch commitment
 /// * `batch` - Encrypted transactions
 /// * `context` - Decryption context
@@ -261,7 +267,7 @@ fn tx_commitment_scalar<B: PairingBackend<Scalar = Fr>>(
     )
 )]
 pub fn verify_eval_proofs<B: PairingBackend<Scalar = Fr>>(
-    setup: &TrustedSetup<B>,
+    setup: &EpochSetup<B>,
     commitment: &BatchCommitment<B>,
     batch: &[EncryptedTransaction<B>],
     context: &DecryptionContext,
@@ -270,13 +276,14 @@ pub fn verify_eval_proofs<B: PairingBackend<Scalar = Fr>>(
 where
     B::G1: PartialEq,
 {
+    setup.validate_context_index(context.context_index)?;
     if proofs.len() != batch.len() {
         return Err(TrxError::InvalidInput(
             "eval proof count must match batch size".into(),
         ));
     }
     let polynomial = batch_polynomial(batch, context);
-    let expected_commitment = KZG::commit_g1(&setup.srs, &polynomial)
+    let expected_commitment = KZG::commit_g1(setup.srs(), &polynomial)
         .map_err(|err| TrxError::Backend(err.to_string()))?;
     if expected_commitment != commitment.com {
         return Err(TrxError::InvalidInput(
@@ -289,7 +296,7 @@ where
             return Err(TrxError::InvalidInput("eval proof point mismatch".into()));
         }
         let ok = KZG::verify_g1(
-            &setup.srs,
+            setup.srs(),
             &commitment.com,
             &proof.point,
             &proof.value,

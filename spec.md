@@ -80,9 +80,19 @@ pub struct BatchContext<'a> {
 
 ### 2.2 Setup Structures
 ```rust
-pub struct TrustedSetup {
-    srs: SRS, // KZG parameters
-    kappa_setups: Vec<KappaSetup>,   // Randomized KZG setups
+pub struct GlobalSetup {
+    srs: SRS, // KZG parameters (reusable across epochs)
+}
+
+pub struct EpochSetup {
+    epoch_id: u64,
+    kappa_setups: Vec<KappaSetup>, // Randomized KZG setups
+    global_setup: Arc<GlobalSetup>,
+}
+
+pub struct TrustedSetup { // Legacy combined setup
+    srs: SRS,
+    kappa_setups: Vec<KappaSetup>,
 }
 
 pub struct KappaSetup {
@@ -95,7 +105,7 @@ pub struct EpochKeys {
     epoch_id: u64,
     public_key: PublicKey,
     // Note: validator shares are stored by validators themselves (silent setup)
-    setup: Arc<TrustedSetup>,
+    epoch_setup: Arc<EpochSetup>,
 }
 ```
 
@@ -104,9 +114,15 @@ pub struct EpochKeys {
 ### 3.1 Setup Phase
 ```rust
 pub trait SetupManager {
-    /// One-time trusted setup (or distributed ceremony)
-    fn generate_trusted_setup(max_batch_size: usize, max_contexts: usize)
-        -> Result<TrustedSetup>;
+    /// One-time global setup (or distributed ceremony)
+    fn generate_global_setup(max_batch_size: usize) -> Result<GlobalSetup>;
+
+    /// Per-epoch setup derived from the global setup
+    fn generate_epoch_setup(
+        epoch_id: u64,
+        max_contexts: usize,
+        global_setup: Arc<GlobalSetup>,
+    ) -> Result<EpochSetup>;
 
     /// Silent key generation: each validator independently generates their own key pair
     fn keygen_single_validator(
@@ -117,11 +133,12 @@ pub trait SetupManager {
     fn aggregate_epoch_keys(
         validator_public_keys: Vec<PublicKey>,
         threshold: u32,
-        setup: Arc<TrustedSetup>,
+        epoch_setup: Arc<EpochSetup>,
     ) -> Result<EpochKeys>;
 
     /// Verify setup integrity
-    fn verify_setup(setup: &TrustedSetup) -> Result<()>;
+    fn verify_global_setup(setup: &GlobalSetup) -> Result<()>;
+    fn verify_epoch_setup(setup: &EpochSetup) -> Result<()>;
 }
 ```
 
@@ -202,7 +219,7 @@ pub trait BatchDecryption {
     fn compute_digest(
         batch: &[EncryptedTransaction],
         context: &DecryptionContext,
-        setup: &TrustedSetup,
+        setup: &EpochSetup,
     ) -> Result<BatchCommitment>;
     
     /// Generate partial decryption share
@@ -225,7 +242,7 @@ pub trait BatchDecryption {
     fn compute_eval_proofs(
         batch: &[EncryptedTransaction],
         context: &DecryptionContext,
-        setup: &TrustedSetup,
+        setup: &EpochSetup,
     ) -> Result<Vec<EvalProof>>;
     
     /// Combine shares and decrypt batch
@@ -233,7 +250,7 @@ pub trait BatchDecryption {
         partial_decryptions: Vec<PartialDecryption>,
         batch_ctx: BatchContext,
         threshold: u32,
-        setup: &TrustedSetup,
+        setup: &EpochSetup,
         agg_key: &AggregateKey,
     ) -> Result<Vec<DecryptionResult>>;
 }
@@ -296,7 +313,7 @@ impl PrecomputationEngine {
     pub async fn precompute(
         &self,
         block: &Block,
-        setup: &TrustedSetup,
+        setup: &EpochSetup,
     ) -> Result<PrecomputedData> {
         let (digest_handle, proofs_handle) = tokio::join!(
             self.compute_digest_async(block, setup),

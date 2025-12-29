@@ -157,7 +157,72 @@ impl<B: PairingBackend<Scalar = Fr>> TrxCrypto<B> {
     }
 }
 
-/// Trusted setup for KZG commitments and threshold encryption.
+/// Global setup parameters (one-time, reusable across epochs).
+///
+/// This bundles:
+/// - Tess params for threshold key generation (includes lagrange powers)
+/// - An independent SRS for KZG commitments sized to the max batch size
+///
+/// From the global setup, epoch-specific randomized kappa contexts can be derived.
+#[derive(Clone, Debug)]
+pub struct GlobalSetup<B: PairingBackend<Scalar = Fr>> {
+    /// Tess parameters for key generation and aggregation.
+    pub params: tess::Params<B>,
+    /// KZG structured reference string for batch commitments.
+    pub srs: SRS<B>,
+}
+
+/// Epoch-specific setup with randomized kappa contexts.
+///
+/// This is derived from the GlobalSetup for each epoch and contains:
+/// - Randomized kappa contexts for batch decryption
+/// - Reference to the global setup
+///
+/// Each kappa context is computed as κ·[τ⁰G, τ¹G, τ²G, ...] where κ is a
+/// random scalar specific to this epoch, and the SRS elements come from the global setup.
+#[derive(Debug)]
+pub struct EpochSetup<B: PairingBackend<Scalar = Fr>> {
+    /// Epoch identifier
+    pub epoch_id: u64,
+    /// Randomized kappa contexts (one per potential decryption context/block)
+    pub kappa_setups: Vec<KappaSetup<B>>,
+    /// Reference to the global setup
+    pub global_setup: Arc<GlobalSetup<B>>,
+}
+
+impl<B: PairingBackend<Scalar = Fr>> EpochSetup<B> {
+    /// Validates that a context index is within bounds.
+    #[instrument(
+        level = "info",
+        skip_all,
+        fields(context_index, max_contexts = self.kappa_setups.len())
+    )]
+    pub fn validate_context_index(&self, context_index: u32) -> Result<(), TrxError> {
+        if context_index as usize >= self.kappa_setups.len() {
+            let max_msg = if self.kappa_setups.is_empty() {
+                "no kappa contexts available".to_string()
+            } else {
+                format!("exceeds maximum {}", self.kappa_setups.len() - 1)
+            };
+            return Err(TrxError::InvalidInput(format!(
+                "context_index {} {} (from epoch setup)",
+                context_index, max_msg
+            )));
+        }
+        Ok(())
+    }
+
+    /// Get the SRS from the global setup.
+    pub fn srs(&self) -> &SRS<B> {
+        &self.global_setup.srs
+    }
+}
+
+/// Trusted setup for KZG commitments and threshold encryption (legacy).
+///
+/// **Note**: This type combines both global (SRS) and epoch-specific (kappa contexts)
+/// parameters in a single struct. For new code, prefer using `GlobalSetup` and `EpochSetup`
+/// separately for better separation of concerns.
 ///
 /// Contains the cryptographic parameters needed for the entire system:
 /// - SRS for KZG polynomial commitments
@@ -235,8 +300,8 @@ pub struct EpochKeys<B: PairingBackend<Scalar = Fr>> {
     pub epoch_id: u64,
     /// Aggregate threshold public key for encryption
     pub public_key: PublicKey<B>,
-    /// Shared reference to the trusted setup
-    pub setup: Arc<TrustedSetup<B>>,
+    /// Shared reference to the epoch setup (contains kappa contexts and global setup)
+    pub epoch_setup: Arc<EpochSetup<B>>,
 }
 
 /// Individual validator's key pair for threshold encryption.
@@ -252,7 +317,58 @@ pub struct ValidatorKeyPair<B: PairingBackend<Scalar = Fr>> {
 
 /// Setup and key generation interface for TrX.
 pub trait SetupManager<B: PairingBackend<Scalar = Fr>> {
-    /// Generates a trusted setup for the TrX system.
+    /// Generates a global setup (one-time, reusable across epochs).
+    ///
+    /// This generates the universal parameters (SRS and Lagrange points) that can be
+    /// reused across all epochs. The global setup is the Tess `Params`.
+    ///
+    /// # Arguments
+    ///
+    /// * `rng` - Random number generator
+    /// * `max_batch_size` - Maximum number of transactions per batch
+    ///
+    /// # Returns
+    ///
+    /// A `GlobalSetup` (Tess `Params`) containing the SRS.
+    fn generate_global_setup(
+        &self,
+        rng: &mut impl RngCore,
+        max_batch_size: usize,
+    ) -> Result<Arc<GlobalSetup<B>>, TrxError>;
+
+    /// Generates an epoch-specific setup from the global setup.
+    ///
+    /// This derives randomized kappa contexts from the global setup for a specific epoch.
+    /// Each kappa context is computed as κ·SRS where κ is a random scalar.
+    ///
+    /// # Arguments
+    ///
+    /// * `rng` - Random number generator
+    /// * `epoch_id` - Unique identifier for this epoch
+    /// * `max_contexts` - Maximum number of decryption contexts (blocks) in this epoch
+    /// * `global_setup` - Reference to the global setup
+    ///
+    /// # Returns
+    ///
+    /// An `EpochSetup` containing randomized kappa contexts.
+    fn generate_epoch_setup(
+        &self,
+        rng: &mut impl RngCore,
+        epoch_id: u64,
+        max_contexts: usize,
+        global_setup: Arc<GlobalSetup<B>>,
+    ) -> Result<Arc<EpochSetup<B>>, TrxError>;
+
+    /// Verifies the integrity of a global setup.
+    fn verify_global_setup(&self, setup: &GlobalSetup<B>) -> Result<(), TrxError>;
+
+    /// Verifies the integrity of an epoch setup.
+    fn verify_epoch_setup(&self, setup: &EpochSetup<B>) -> Result<(), TrxError>;
+
+    /// Generates a trusted setup for the TrX system (legacy).
+    ///
+    /// **Note**: This combines global and epoch setup in one call. For new code,
+    /// prefer using `generate_global_setup` and `generate_epoch_setup` separately.
     fn generate_trusted_setup(
         &self,
         rng: &mut impl RngCore,
@@ -266,7 +382,7 @@ pub trait SetupManager<B: PairingBackend<Scalar = Fr>> {
         &self,
         validator_public_keys: Vec<tess::PublicKey<B>>,
         threshold: u32,
-        setup: Arc<TrustedSetup<B>>,
+        epoch_setup: Arc<EpochSetup<B>>,
     ) -> Result<EpochKeys<B>, TrxError>;
 
     /// Verifies the integrity of a trusted setup.
@@ -274,6 +390,90 @@ pub trait SetupManager<B: PairingBackend<Scalar = Fr>> {
 }
 
 impl<B: PairingBackend<Scalar = Fr>> SetupManager<B> for TrxCrypto<B> {
+    #[instrument(level = "info", skip_all, fields(max_batch_size))]
+    fn generate_global_setup(
+        &self,
+        rng: &mut impl RngCore,
+        max_batch_size: usize,
+    ) -> Result<Arc<GlobalSetup<B>>, TrxError> {
+        if max_batch_size == 0 {
+            return Err(TrxError::InvalidConfig("max_batch_size must be > 0".into()));
+        }
+
+        // Generate seed for SRS
+        let mut seed = [0u8; 32];
+        rng.fill_bytes(&mut seed);
+
+        // Reuse the crypto instance params so keygen/aggregate/encrypt stay consistent.
+        let params = self.params.clone();
+
+        // Generate KZG SRS sized for batch commitments.
+        let srs = <tess::KZG as tess::PolynomialCommitment<B>>::setup(max_batch_size, &seed)
+            .map_err(|e| TrxError::Backend(e.to_string()))?;
+
+        Ok(Arc::new(GlobalSetup { params, srs }))
+    }
+
+    #[instrument(level = "info", skip_all, fields(epoch_id, max_contexts))]
+    fn generate_epoch_setup(
+        &self,
+        rng: &mut impl RngCore,
+        epoch_id: u64,
+        max_contexts: usize,
+        global_setup: Arc<GlobalSetup<B>>,
+    ) -> Result<Arc<EpochSetup<B>>, TrxError> {
+        // Generate randomized kappa contexts from the global SRS
+        let mut kappa_setups = Vec::with_capacity(max_contexts);
+        for idx in 0..max_contexts {
+            let kappa = B::Scalar::random(rng);
+            let elements = global_setup
+                .srs
+                .powers_of_g
+                .iter()
+                .map(|g| g.mul_scalar(&kappa))
+                .collect::<Vec<_>>();
+            kappa_setups.push(KappaSetup {
+                index: idx as u32,
+                elements,
+                used: AtomicBool::new(false),
+            });
+        }
+
+        Ok(Arc::new(EpochSetup {
+            epoch_id,
+            kappa_setups,
+            global_setup,
+        }))
+    }
+
+    #[instrument(level = "info", skip_all)]
+    fn verify_global_setup(&self, setup: &GlobalSetup<B>) -> Result<(), TrxError> {
+        if setup.srs.powers_of_g.is_empty() || setup.srs.powers_of_h.is_empty() {
+            return Err(TrxError::InvalidInput("global setup missing powers".into()));
+        }
+        if setup.params.srs.powers_of_g.is_empty() || setup.params.srs.powers_of_h.is_empty() {
+            return Err(TrxError::InvalidInput(
+                "global setup params missing powers".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    #[instrument(
+        level = "info",
+        skip_all,
+        fields(kappa_len = setup.kappa_setups.len())
+    )]
+    fn verify_epoch_setup(&self, setup: &EpochSetup<B>) -> Result<(), TrxError> {
+        self.verify_global_setup(&setup.global_setup)?;
+        if setup.kappa_setups.is_empty() {
+            return Err(TrxError::InvalidInput(
+                "epoch setup missing kappa contexts".into(),
+            ));
+        }
+        Ok(())
+    }
+
     #[instrument(level = "info", skip_all, fields(max_batch_size, max_contexts))]
     fn generate_trusted_setup(
         &self,
@@ -316,7 +516,7 @@ impl<B: PairingBackend<Scalar = Fr>> SetupManager<B> for TrxCrypto<B> {
         &self,
         validator_public_keys: Vec<tess::PublicKey<B>>,
         threshold: u32,
-        setup: Arc<TrustedSetup<B>>,
+        epoch_setup: Arc<EpochSetup<B>>,
     ) -> Result<EpochKeys<B>, TrxError> {
         let parties = validator_public_keys.len();
         if parties == 0 {
@@ -337,14 +537,16 @@ impl<B: PairingBackend<Scalar = Fr>> SetupManager<B> for TrxCrypto<B> {
 
         // Aggregate the public keys deterministically
         // This is the non-interactive "DKG" - just aggregation of published public keys
-        let agg_key =
-            self.tess_scheme
-                .aggregate_public_key(&validator_public_keys, &self.params, parties)?;
+        let agg_key = self.tess_scheme.aggregate_public_key(
+            &validator_public_keys,
+            &epoch_setup.global_setup.params,
+            parties,
+        )?;
 
         Ok(EpochKeys {
-            epoch_id: 0,
+            epoch_id: epoch_setup.epoch_id,
             public_key: PublicKey { agg_key },
-            setup,
+            epoch_setup,
         })
     }
 
@@ -454,7 +656,7 @@ pub trait BatchDecryption<B: PairingBackend<Scalar = Fr>> {
     fn compute_digest(
         batch: &[EncryptedTransaction<B>],
         context: &DecryptionContext,
-        setup: &TrustedSetup<B>,
+        setup: &EpochSetup<B>,
     ) -> Result<BatchCommitment<B>, TrxError>;
 
     /// Generates a partial decryption share for a single transaction.
@@ -477,7 +679,7 @@ pub trait BatchDecryption<B: PairingBackend<Scalar = Fr>> {
     fn compute_eval_proofs(
         batch: &[EncryptedTransaction<B>],
         context: &DecryptionContext,
-        setup: &TrustedSetup<B>,
+        setup: &EpochSetup<B>,
     ) -> Result<Vec<EvalProof<B>>, TrxError>;
 
     /// Combines partial decryptions and decrypts the batch.
@@ -487,7 +689,7 @@ pub trait BatchDecryption<B: PairingBackend<Scalar = Fr>> {
         partial_decryptions: Vec<PartialDecryption<B>>,
         batch_ctx: BatchContext<'a, B>,
         threshold: u32,
-        setup: &TrustedSetup<B>,
+        setup: &EpochSetup<B>,
         agg_key: &AggregateKey<B>,
     ) -> Result<Vec<DecryptionResult>, TrxError>
     where
@@ -503,7 +705,7 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
     fn compute_digest(
         batch: &[EncryptedTransaction<B>],
         context: &DecryptionContext,
-        setup: &TrustedSetup<B>,
+        setup: &EpochSetup<B>,
     ) -> Result<BatchCommitment<B>, TrxError> {
         BatchCommitment::compute(batch, context, setup)
     }
@@ -549,7 +751,7 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
     fn compute_eval_proofs(
         batch: &[EncryptedTransaction<B>],
         context: &DecryptionContext,
-        setup: &TrustedSetup<B>,
+        setup: &EpochSetup<B>,
     ) -> Result<Vec<EvalProof<B>>, TrxError> {
         EvalProof::compute_for_batch(batch, context, setup)
     }
@@ -569,7 +771,7 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
         partial_decryptions: Vec<PartialDecryption<B>>,
         batch_ctx: BatchContext<'a, B>,
         threshold: u32,
-        setup: &TrustedSetup<B>,
+        setup: &EpochSetup<B>,
         agg_key: &AggregateKey<B>,
     ) -> Result<Vec<DecryptionResult>, TrxError>
     where

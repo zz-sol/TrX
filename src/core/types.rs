@@ -88,7 +88,7 @@ pub struct DecryptionContext {
 /// [`EvalProof`]s during batch decryption.
 #[derive(Debug)]
 pub struct BatchCommitment<B: PairingBackend> {
-    /// KZG commitment: C = [p(τ)]₁ where τ is the trusted setup secret
+    /// KZG commitment: C = [p(τ)]₁ where τ is from the global setup SRS
     pub com: B::G1,
     /// Degree of the committed polynomial (batch_size - 1)
     pub polynomial_degree: u32,

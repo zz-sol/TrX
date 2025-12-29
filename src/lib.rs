@@ -25,7 +25,7 @@
 //! ├──────────────────────────────────────────────────────────────┤
 //! │  tx_enc          │ Transaction encryption & batch decryption │
 //! │  commitment      │ KZG commitments & evaluation proofs       │
-//! │  setup           │ Trusted setup & silent key generation     │
+//! │  setup           │ Global/epoch setup & silent key generation │
 //! │  signatures      │ Ed25519 (client) & BLS (validator) sigs   │
 //! │  pre_computation │ Caching layer for KZG operations          │
 //! │  mempool         │ Encrypted transaction queue               │
@@ -43,7 +43,7 @@
 //! - [`TrxCrypto`]: Main cryptographic engine implementing all protocol traits
 //! - [`TransactionEncryption`]: Client-side encryption interface
 //! - [`BatchDecryption`]: Consensus-layer batch decryption protocol
-//! - [`SetupManager`]: Trusted setup and silent key generation operations
+//! - [`SetupManager`]: Global/epoch setup and silent key generation operations
 //!
 //! ## Data Structures
 //!
@@ -68,7 +68,6 @@
 //! use trx::TrxMinion;
 //! use tess::PairingEngine;
 //! use ed25519_dalek::SigningKey;
-//! use std::sync::Arc;
 //! # use rand::thread_rng;
 //! # fn main() -> Result<(), trx::TrxError> {
 //!
@@ -78,7 +77,10 @@
 //! let minion = TrxMinion::<PairingEngine>::new(&mut rng, 5, 3)?;
 //!
 //! // Phase 1: Setup
-//! let setup = Arc::new(minion.setup().generate_trusted_setup(&mut rng, 128, 1000)?);
+//! let global_setup = minion.setup().generate_global_setup(&mut rng, 128)?;
+//! let setup = minion
+//!     .setup()
+//!     .generate_epoch_setup(&mut rng, 1, 1000, global_setup.clone())?;
 //!
 //! // Phase 2: Silent key generation
 //! let validators: Vec<u32> = (0..5).collect();
@@ -86,7 +88,13 @@
 //!     .iter()
 //!     .map(|&id| minion.validator().keygen_single_validator(&mut rng, id))
 //!     .collect::<Result<Vec<_>, _>>()?;
-//! let epoch_keys = minion.setup().aggregate_epoch_keys(validator_keypairs, 3, setup.clone())?;
+//! let public_keys = validator_keypairs
+//!     .iter()
+//!     .map(|kp| kp.public_key.clone())
+//!     .collect();
+//! let epoch_keys = minion
+//!     .setup()
+//!     .aggregate_epoch_keys(public_keys, 3, setup.clone())?;
 //!
 //! // Phase 3: Client encryption
 //! let signing_key = SigningKey::generate(&mut rng);
@@ -113,7 +121,6 @@
 //! ```rust,no_run
 //! use trx::*;
 //! use ed25519_dalek::SigningKey;
-//! use std::sync::Arc;
 //! # use rand::thread_rng;
 //! # fn main() -> Result<(), TrxError> {
 //!
@@ -122,8 +129,9 @@
 //! // 1. Initialize crypto engine (5 validators, 3 threshold)
 //! let crypto = TrxCrypto::<tess::PairingEngine>::new(&mut rng, 5, 3)?;
 //!
-//! // 2. Generate trusted setup
-//! let setup = Arc::new(crypto.generate_trusted_setup(&mut rng, 128, 1000)?);
+//! // 2. Generate setup
+//! let global_setup = crypto.generate_global_setup(&mut rng, 128)?;
+//! let setup = crypto.generate_epoch_setup(&mut rng, 1, 1000, global_setup.clone())?;
 //!
 //! // 3. Silent setup: each validator independently generates their own key
 //! let validators: Vec<u32> = (0..5).collect();
@@ -131,7 +139,11 @@
 //!     .iter()
 //!     .map(|&id| crypto.keygen_single_validator(&mut rng, id))
 //!     .collect::<Result<Vec<_>, _>>()?;
-//! let epoch_keys = crypto.aggregate_epoch_keys(validator_keypairs, 3, setup.clone())?;
+//! let public_keys = validator_keypairs
+//!     .iter()
+//!     .map(|kp| kp.public_key.clone())
+//!     .collect();
+//! let epoch_keys = crypto.aggregate_epoch_keys(public_keys, 3, setup.clone())?;
 //!
 //! // 4. Client encrypts transaction
 //! let signing_key = SigningKey::generate(&mut rng);
@@ -145,7 +157,8 @@
 //! // 5. Validators decrypt batch
 //! let batch = vec![encrypted_tx];
 //! let context = DecryptionContext { block_height: 1, context_index: 0 };
-//! let commitment = TrxCrypto::<tess::PairingEngine>::compute_digest(&batch, &context, &epoch_keys.setup)?;
+//! let commitment =
+//!     TrxCrypto::<tess::PairingEngine>::compute_digest(&batch, &context, &epoch_keys.epoch_setup)?;
 //! // ... generate partial decryptions, then combine to decrypt
 //! # Ok(())
 //! # }
@@ -164,7 +177,7 @@
 //!
 //! # Security Notes
 //!
-//! - Trusted setup must be generated using secure ceremony or trusted randomness
+//! - Setup must be generated using secure ceremony or trusted randomness
 //! - Threshold parameters affect both security and availability
 //! - Decryption contexts prevent replay across blocks/epochs
 //! - Client signatures bind transactions to specific ciphertext+metadata
@@ -234,8 +247,8 @@ pub use core::types::{
 pub use crypto::kzg::verify_eval_proofs;
 pub use crypto::pre_computation::PrecomputationEngine;
 pub use crypto::trx_crypto::{
-    BatchDecryption, EpochKeys, SetupManager, TransactionEncryption, TrustedSetup, TrxCrypto,
-    ValidatorKeyPair,
+    BatchDecryption, EpochKeys, EpochSetup, GlobalSetup, SetupManager, TransactionEncryption,
+    TrustedSetup, TrxCrypto, ValidatorKeyPair,
 };
 pub use mempool::EncryptedMempool;
 pub use network::messages::TrxMessage;

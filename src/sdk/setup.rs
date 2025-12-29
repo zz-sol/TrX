@@ -1,16 +1,19 @@
-//! Setup Phase API - System bootstrapping and trusted setup generation.
+//! Setup Phase API - System bootstrapping and setup generation.
 //!
-//! This phase is performed once during system initialization to create the
-//! cryptographic parameters required for threshold encryption.
+//! This phase is performed during system initialization and at each epoch
+//! to create the cryptographic parameters required for threshold encryption.
 
-use crate::{EpochKeys, SetupManager, TrustedSetup, TrxCrypto, TrxError};
+use crate::{
+    EpochKeys, EpochSetup, GlobalSetup, SetupManager, TrustedSetup, TrxCrypto, TrxError,
+};
 use std::sync::Arc;
 use tess::{Fr, PairingBackend};
 
 /// Setup Phase API for system initialization.
 ///
 /// This phase handles:
-/// - Generating trusted setup (SRS and kappa contexts)
+/// - Generating global setup (SRS)
+/// - Generating epoch setup (randomized kappa contexts)
 /// - Aggregating validator public keys
 /// - Verifying setup integrity
 ///
@@ -20,18 +23,19 @@ use tess::{Fr, PairingBackend};
 /// use trx::TrxMinion;
 /// use tess::PairingEngine;
 /// use rand::thread_rng;
-/// use std::sync::Arc;
-///
 /// let mut rng = thread_rng();
 /// let client = TrxMinion::<PairingEngine>::new(&mut rng, 100, 67)?;
 ///
-/// // Generate trusted setup for batches up to 1000 transactions
-/// let setup = Arc::new(
-///     client.setup().generate_trusted_setup(&mut rng, 1000, 100)?
-/// );
+/// // Generate global setup (SRS)
+/// let global_setup = client.setup().generate_global_setup(&mut rng, 1000)?;
+///
+/// // Generate epoch setup for batches up to 1000 transactions
+/// let setup = client
+///     .setup()
+///     .generate_epoch_setup(&mut rng, 1, 100, global_setup.clone())?;
 ///
 /// // Verify setup integrity
-/// client.setup().verify_setup(&setup)?;
+/// client.setup().verify_epoch_setup(&setup)?;
 /// # Ok::<(), trx::TrxError>(())
 /// ```
 pub struct SetupPhase<'a, B: PairingBackend<Scalar = Fr>> {
@@ -43,7 +47,35 @@ impl<'a, B: PairingBackend<Scalar = Fr>> SetupPhase<'a, B> {
         Self { crypto }
     }
 
-    /// Generate a new trusted setup.
+    /// Generate a new global setup.
+    ///
+    /// This is a one-time operation that creates the SRS (Structured Reference String)
+    /// used for KZG commitments. The resulting `GlobalSetup` can be reused across
+    /// all epochs and should be distributed to participants.
+    pub fn generate_global_setup(
+        &self,
+        rng: &mut impl rand_core::RngCore,
+        max_batch_size: usize,
+    ) -> Result<Arc<GlobalSetup<B>>, TrxError> {
+        self.crypto.generate_global_setup(rng, max_batch_size)
+    }
+
+    /// Generate a new epoch setup.
+    ///
+    /// This derives randomized kappa contexts from the global setup for a specific epoch.
+    /// Each kappa context is single-use and should be discarded after being consumed.
+    pub fn generate_epoch_setup(
+        &self,
+        rng: &mut impl rand_core::RngCore,
+        epoch_id: u64,
+        max_contexts: usize,
+        global_setup: Arc<GlobalSetup<B>>,
+    ) -> Result<Arc<EpochSetup<B>>, TrxError> {
+        self.crypto
+            .generate_epoch_setup(rng, epoch_id, max_contexts, global_setup)
+    }
+
+    /// Generate a new trusted setup (legacy).
     ///
     /// This is a one-time operation that creates:
     /// - **SRS (Structured Reference String)**: Powers of tau for KZG commitments
@@ -77,7 +109,6 @@ impl<'a, B: PairingBackend<Scalar = Fr>> SetupPhase<'a, B> {
     /// use tess::PairingEngine;
     /// use rand::thread_rng;
     /// use std::sync::Arc;
-    ///
     /// let mut rng = thread_rng();
     /// let client = TrxMinion::<PairingEngine>::new(&mut rng, 100, 67)?;
     ///
@@ -112,7 +143,7 @@ impl<'a, B: PairingBackend<Scalar = Fr>> SetupPhase<'a, B> {
     ///
     /// * `validator_public_keys` - Public keys from all validators
     /// * `threshold` - Minimum number of validators needed for decryption
-    /// * `setup` - The trusted setup to bind this epoch to
+    /// * `setup` - The epoch setup to bind this epoch to
     ///
     /// # Security Considerations
     ///
@@ -136,7 +167,10 @@ impl<'a, B: PairingBackend<Scalar = Fr>> SetupPhase<'a, B> {
     ///
     /// let mut rng = thread_rng();
     /// let client = TrxMinion::<PairingEngine>::new(&mut rng, 3, 2)?;
-    /// let setup = Arc::new(client.setup().generate_trusted_setup(&mut rng, 100, 10)?);
+    /// let global_setup = client.setup().generate_global_setup(&mut rng, 100)?;
+    /// let setup = client
+    ///     .setup()
+    ///     .generate_epoch_setup(&mut rng, 1, 10, global_setup.clone())?;
     ///
     /// // Each validator generates their keypair independently
     /// let kp0 = client.validator().keygen_single_validator(&mut rng, 0)?;
@@ -157,13 +191,23 @@ impl<'a, B: PairingBackend<Scalar = Fr>> SetupPhase<'a, B> {
         &self,
         validator_public_keys: Vec<tess::PublicKey<B>>,
         threshold: u32,
-        setup: Arc<TrustedSetup<B>>,
+        setup: Arc<EpochSetup<B>>,
     ) -> Result<EpochKeys<B>, TrxError> {
         self.crypto
             .aggregate_epoch_keys(validator_public_keys, threshold, setup)
     }
 
-    /// Verify the integrity of a trusted setup.
+    /// Verify the integrity of a global setup.
+    pub fn verify_global_setup(&self, setup: &GlobalSetup<B>) -> Result<(), TrxError> {
+        self.crypto.verify_global_setup(setup)
+    }
+
+    /// Verify the integrity of an epoch setup.
+    pub fn verify_epoch_setup(&self, setup: &EpochSetup<B>) -> Result<(), TrxError> {
+        self.crypto.verify_epoch_setup(setup)
+    }
+
+    /// Verify the integrity of a trusted setup (legacy).
     ///
     /// This performs basic structural validation:
     /// - SRS has correct degree for the configured max batch size

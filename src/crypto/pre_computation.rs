@@ -29,7 +29,8 @@
 //! # fn example() -> Result<(), TrxError> {
 //! # let mut rng = rand::thread_rng();
 //! # let crypto = TrxCrypto::<tess::PairingEngine>::new(&mut rng, 5, 3)?;
-//! # let setup = crypto.generate_trusted_setup(&mut rng, 128, 1000)?;
+//! # let global_setup = crypto.generate_global_setup(&mut rng, 128)?;
+//! # let setup = crypto.generate_epoch_setup(&mut rng, 1, 1000, global_setup)?;
 //! # let batch = vec![]; // encrypted transactions
 //! let engine = PrecomputationEngine::<tess::PairingEngine>::new();
 //! let context = DecryptionContext { block_height: 1, context_index: 0 };
@@ -54,8 +55,8 @@ use tess::{Fr, PairingBackend};
 use tracing::instrument;
 
 use crate::{
-    BatchCommitment, BatchDecryption, DecryptionContext, EncryptedTransaction, EvalProof,
-    TrustedSetup, TrxCrypto, TrxError,
+    BatchCommitment, BatchDecryption, DecryptionContext, EncryptedTransaction, EpochSetup,
+    EvalProof, TrxCrypto, TrxError,
 };
 
 /// Cache for expensive batch commitment and proof computations.
@@ -123,7 +124,7 @@ impl<B: PairingBackend<Scalar = Fr>> PrecomputationEngine<B> {
     ///
     /// * `batch` - Encrypted transactions to process
     /// * `context` - Decryption context (binds cache key to specific block/epoch)
-    /// * `setup` - Trusted setup for KZG operations
+    /// * `setup` - Epoch setup for KZG operations
     ///
     /// # Returns
     ///
@@ -149,7 +150,7 @@ impl<B: PairingBackend<Scalar = Fr>> PrecomputationEngine<B> {
         &self,
         batch: &[EncryptedTransaction<B>],
         context: &DecryptionContext,
-        setup: &TrustedSetup<B>,
+        setup: &EpochSetup<B>,
     ) -> Result<PrecomputedData<B>, TrxError> {
         let key = precompute_key(batch, context);
 

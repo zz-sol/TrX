@@ -6,7 +6,7 @@
 //!
 //! The encrypted mempool operates in six distinct phases:
 //!
-//! 1. **Setup Phase**: One-time system initialization and trusted setup generation
+//! 1. **Setup Phase**: Global setup (SRS) and per-epoch setup generation
 //! 2. **Validator Key Generation**: Non-interactive, silent key generation per validator
 //! 3. **Client Phase**: Transaction encryption and submission
 //! 4. **Mempool Phase**: Transaction admission, validation, and queuing
@@ -23,7 +23,10 @@
 //! // Phase 1: Setup
 //! let mut rng = thread_rng();
 //! let minion = TrxMinion::<PairingEngine>::new(&mut rng, 100, 67)?;
-//! let setup = minion.setup().generate_trusted_setup(&mut rng, 1000, 100)?;
+//! let global_setup = minion.setup().generate_global_setup(&mut rng, 1000)?;
+//! let setup = minion
+//!     .setup()
+//!     .generate_epoch_setup(&mut rng, 1, 100, global_setup.clone())?;
 //!
 //! // Phase 2: Validator key generation
 //! let keypair = minion.validator().keygen_single_validator(&mut rng, 0)?;
@@ -124,7 +127,7 @@ where
     ///
     /// # Returns
     ///
-    /// A `SetupPhase` instance for generating and verifying trusted setup.
+    /// A `SetupPhase` instance for generating and verifying setup parameters.
     pub fn setup(&self) -> SetupPhase<'_, B> {
         SetupPhase::new(&self.crypto)
     }

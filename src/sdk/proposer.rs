@@ -5,7 +5,7 @@
 
 use crate::{
     verify_eval_proofs, BatchCommitment, BatchDecryption, DecryptionContext, EncryptedTransaction,
-    EvalProof, TrustedSetup, TrxCrypto, TrxError,
+    EpochSetup, EvalProof, TrxCrypto, TrxError,
 };
 use tess::{Fr, PairingBackend};
 
@@ -63,14 +63,14 @@ where
     /// # Process
     ///
     /// 1. Construct polynomial from `H(tx_i || context)` for each transaction
-    /// 2. Compute KZG commitment `C = [p(τ)]₁` where τ is from the trusted setup
+    /// 2. Compute KZG commitment `C = [p(τ)]₁` where τ is from the global setup
     /// 3. Return commitment with polynomial degree
     ///
     /// # Arguments
     ///
     /// * `batch` - Slice of encrypted transactions to commit to
     /// * `context` - Decryption context binding (block height + context index)
-    /// * `setup` - The trusted setup containing SRS parameters
+    /// * `setup` - The epoch setup containing SRS parameters
     ///
     /// # Errors
     ///
@@ -110,7 +110,7 @@ where
         &self,
         batch: &[EncryptedTransaction<B>],
         context: &DecryptionContext,
-        setup: &TrustedSetup<B>,
+        setup: &EpochSetup<B>,
     ) -> Result<BatchCommitment<B>, TrxError> {
         TrxCrypto::<B>::compute_digest(batch, context, setup)
     }
@@ -132,7 +132,7 @@ where
     ///
     /// * `batch` - Slice of encrypted transactions
     /// * `context` - Decryption context (must match `compute_digest`)
-    /// * `setup` - The trusted setup containing SRS parameters
+    /// * `setup` - The epoch setup containing SRS parameters
     ///
     /// # Errors
     ///
@@ -175,7 +175,7 @@ where
         &self,
         batch: &[EncryptedTransaction<B>],
         context: &DecryptionContext,
-        setup: &TrustedSetup<B>,
+        setup: &EpochSetup<B>,
     ) -> Result<Vec<EvalProof<B>>, TrxError> {
         TrxCrypto::<B>::compute_eval_proofs(batch, context, setup)
     }
@@ -193,7 +193,7 @@ where
     ///
     /// # Arguments
     ///
-    /// * `setup` - The trusted setup containing SRS and pairing parameters
+    /// * `setup` - The epoch setup containing SRS and pairing parameters
     /// * `commitment` - The batch commitment to verify against
     /// * `batch` - The batch of encrypted transactions
     /// * `context` - Decryption context (must match commitment)
@@ -242,7 +242,7 @@ where
     /// ```
     pub fn verify_eval_proofs(
         &self,
-        setup: &TrustedSetup<B>,
+        setup: &EpochSetup<B>,
         commitment: &BatchCommitment<B>,
         batch: &[EncryptedTransaction<B>],
         context: &DecryptionContext,

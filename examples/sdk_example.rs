@@ -13,8 +13,6 @@
 //! Run with: `cargo run --example sdk_example`
 
 use std::collections::HashMap;
-use std::sync::Arc;
-
 use ed25519_dalek::SigningKey;
 use rand::{rngs::StdRng, thread_rng, SeedableRng};
 use tess::PairingEngine;
@@ -46,18 +44,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = TrxMinion::<PairingEngine>::new(&mut rng, NUM_VALIDATORS, THRESHOLD)?;
 
     println!(
-        "  - Generating trusted setup (max batch: {}, contexts: {})",
-        MAX_BATCH_SIZE, MAX_CONTEXTS
+        "  - Generating global setup (max batch: {})",
+        MAX_BATCH_SIZE
     );
 
-    let setup = Arc::new(client.setup().generate_trusted_setup(
-        &mut rng,
-        MAX_BATCH_SIZE,
-        MAX_CONTEXTS,
-    )?);
+    let global_setup = client
+        .setup()
+        .generate_global_setup(&mut rng, MAX_BATCH_SIZE)?;
 
-    println!("  - Verifying setup integrity...");
-    client.setup().verify_setup(&setup)?;
+    println!(
+        "  - Generating epoch setup (contexts: {})",
+        MAX_CONTEXTS
+    );
+    let setup = client
+        .setup()
+        .generate_epoch_setup(&mut rng, 1, MAX_CONTEXTS, global_setup.clone())?;
+
+    println!("  - Verifying epoch setup integrity...");
+    client.setup().verify_epoch_setup(&setup)?;
     println!("  ✓ Setup verified successfully!\n");
 
     // ========================================================================
