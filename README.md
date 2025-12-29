@@ -103,12 +103,12 @@ use rand::thread_rng;
 fn main() -> Result<(), trx::TrxError> {
     let mut rng = thread_rng();
 
-    // Create client (5 validators, 3 threshold)
-    let client = TrxMinion::<PairingEngine>::new(&mut rng, 5, 3)?;
+    // Create minion (5 validators, 3 threshold)
+    let minion = TrxMinion::<PairingEngine>::new(&mut rng, 5, 3)?;
 
     // Phase 1: Setup
-    let global_setup = client.setup().generate_global_setup(&mut rng, 128)?;
-    let setup = client
+    let global_setup = minion.setup().generate_global_setup(&mut rng, 128)?;
+    let setup = minion
         .setup()
         .generate_epoch_setup(&mut rng, 1, 1000, global_setup.clone())?;
 
@@ -116,13 +116,13 @@ fn main() -> Result<(), trx::TrxError> {
     let validators: Vec<u32> = (0..5).collect();
     let validator_keypairs: Vec<_> = validators
         .iter()
-        .map(|&id| client.validator().keygen_single_validator(&mut rng, id))
+        .map(|&id| minion.validator().keygen_single_validator(&mut rng, id))
         .collect::<Result<Vec<_>, _>>()?;
     let public_keys = validator_keypairs
         .iter()
         .map(|kp| kp.public_key.clone())
         .collect();
-    let epoch_keys = client.setup().aggregate_epoch_keys(
+    let epoch_keys = minion.setup().aggregate_epoch_keys(
         public_keys,
         3,
         setup.clone()
@@ -130,7 +130,7 @@ fn main() -> Result<(), trx::TrxError> {
 
     // Phase 3: Client encryption
     let signing_key = SigningKey::generate(&mut rng);
-    let encrypted_tx = client.client().encrypt_transaction(
+    let encrypted_tx = minion.client().encrypt_transaction(
         &epoch_keys.public_key,
         b"secret transaction data",
         b"public metadata",
@@ -138,7 +138,7 @@ fn main() -> Result<(), trx::TrxError> {
     )?;
 
     // Phase 4: Mempool management
-    let mut mempool = client.mempool().create_mempool(128);
+    let mut mempool = minion.mempool().create_mempool(128);
     mempool.add_encrypted_tx(encrypted_tx)?;
 
     // Phase 5: Batch commitment
@@ -147,14 +147,14 @@ fn main() -> Result<(), trx::TrxError> {
         block_height: 1,
         context_index: 0,
     };
-    let (commitment, proofs) = client.proposer().create_batch_commitment(
+    let (commitment, proofs) = minion.proposer().create_batch_commitment(
         &batch,
         &context,
         &setup,
     )?;
 
     // Phase 6: Threshold decryption
-    let results = client.decryption().decrypt_batch(
+    let results = minion.decryption().decrypt_batch(
         &batch,
         &commitment,
         &proofs,
@@ -252,7 +252,7 @@ let share_json = serde_json::to_string(&partial_decryption)?;
 
 Serializable types include:
 - **Core types**: `EncryptedTransaction`, `PartialDecryption`, `DecryptionContext`, `BatchCommitment`, `EvalProof`
-- **Crypto types**: `GlobalSetup`, `EpochSetup`, `KappaSetup`, `EpochKeys`, `ValidatorKeyPair`, `PublicKey`, `SecretKeyShare`, `TrustedSetup` (legacy)
+- **Crypto types**: `GlobalSetup`, `EpochSetup`, `KappaSetup`, `EpochKeys`, `ValidatorKeyPair`, `PublicKey`, `SecretKeyShare`
 - **Tess types**: `Ciphertext`, `AggregateKey`, `SRS`, `Params`, `PublicKey`, `SecretKey`
 
 This enables:
@@ -327,7 +327,6 @@ All core functionality is implemented in [src/crypto/trx_crypto.rs](src/crypto/t
 | `TrxCrypto::new(rng, parties, threshold)` | Initialize the cryptographic system |
 | `generate_global_setup(rng, max_batch_size)` | Generate SRS (reusable across epochs) |
 | `generate_epoch_setup(rng, epoch_id, max_contexts, global_setup)` | Derive kappa contexts for an epoch |
-| `generate_trusted_setup(rng, max_batch_size, max_contexts)` | Legacy: generate SRS + kappa contexts |
 | `keygen_single_validator(rng, validator_id)` | Each validator independently generates their own key pair (silent setup) |
 | `aggregate_epoch_keys(public_keys, threshold, epoch_setup)` | Non-interactively aggregate validator public keys into epoch keys |
 

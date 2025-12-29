@@ -248,7 +248,7 @@ pub use crypto::kzg::verify_eval_proofs;
 pub use crypto::pre_computation::PrecomputationEngine;
 pub use crypto::trx_crypto::{
     BatchDecryption, EpochKeys, EpochSetup, GlobalSetup, SetupManager, TransactionEncryption,
-    TrustedSetup, TrxCrypto, ValidatorKeyPair,
+    TrxCrypto, ValidatorKeyPair,
 };
 pub use mempool::EncryptedMempool;
 pub use network::messages::TrxMessage;

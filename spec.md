@@ -90,11 +90,6 @@ pub struct EpochSetup {
     global_setup: Arc<GlobalSetup>,
 }
 
-pub struct TrustedSetup { // Legacy combined setup
-    srs: SRS,
-    kappa_setups: Vec<KappaSetup>,
-}
-
 pub struct KappaSetup {
     index: u32,
     elements: Vec<G1Element>,  // [g^(κ·τ^j)] for j in 0..MAX_BATCH_SIZE
@@ -459,15 +454,32 @@ use trx::sdk::{
 Silent setup protocol with non-interactive key generation:
 
 ```rust
-use trx::sdk::setup::*;
+use trx::TrxMinion;
+use tess::PairingEngine;
+use rand::thread_rng;
+use std::sync::Arc;
 
-// Generate silent setup for 4 validators with threshold 2
-let setup_output = run_silent_setup(4, 2)?;
+let mut rng = thread_rng();
+let client = TrxMinion::<PairingEngine>::new(&mut rng, 4, 2)?;
 
-// Extract components
-let public_key = setup_output.public_key;
-let validator_keys = setup_output.validator_keys;
-let trusted_setup = setup_output.trusted_setup;
+// Generate global setup (SRS) - one-time, reusable across epochs
+let global_setup = client.setup().generate_global_setup(&mut rng, 1000)?;
+
+// Generate epoch setup for this epoch
+let epoch_setup = client.setup()
+    .generate_epoch_setup(&mut rng, 1, 100, global_setup.clone())?;
+
+// Each validator generates their own keypair independently
+let validator_keys = (0..4)
+    .map(|id| client.validator().keygen_single_validator(&mut rng, id))
+    .collect::<Result<Vec<_>, _>>()?;
+
+// Aggregate public keys into epoch keys
+let public_keys: Vec<_> = validator_keys.iter()
+    .map(|kp| kp.public_key.clone())
+    .collect();
+let epoch_keys = client.setup()
+    .aggregate_epoch_keys(public_keys, 2, epoch_setup.clone())?;
 ```
 
 ### 8.3 Phase 2: Validator
@@ -532,8 +544,8 @@ use trx::sdk::proposer::*;
 
 // Create proposer
 let proposer = TrxProposer::new(
-    public_key.clone(),
-    trusted_setup.clone(),
+    epoch_keys.public_key.clone(),
+    epoch_setup.clone(),
 );
 
 // Propose batch
@@ -553,8 +565,8 @@ use trx::sdk::decryption::*;
 
 // Create decryptor
 let decryptor = TrxDecryptor::new(
-    public_key.clone(),
-    trusted_setup.clone(),
+    epoch_keys.public_key.clone(),
+    epoch_setup.clone(),
     threshold,
 );
 

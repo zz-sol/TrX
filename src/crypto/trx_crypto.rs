@@ -218,46 +218,6 @@ impl<B: PairingBackend<Scalar = Fr>> EpochSetup<B> {
     }
 }
 
-/// Trusted setup for KZG commitments and threshold encryption (legacy).
-///
-/// **Note**: This type combines both global (SRS) and epoch-specific (kappa contexts)
-/// parameters in a single struct. For new code, prefer using `GlobalSetup` and `EpochSetup`
-/// separately for better separation of concerns.
-///
-/// Contains the cryptographic parameters needed for the entire system:
-/// - SRS for KZG polynomial commitments
-/// - Kappa contexts for randomness binding in batch decryption
-#[derive(Debug)]
-pub struct TrustedSetup<B: PairingBackend<Scalar = Fr>> {
-    /// Structured reference string for KZG commitments
-    pub srs: SRS<B>,
-    /// Randomized kappa contexts (one per potential decryption context)
-    pub kappa_setups: Vec<KappaSetup<B>>,
-}
-
-impl<B: PairingBackend<Scalar = Fr>> TrustedSetup<B> {
-    /// Validates that a context index is within bounds.
-    #[instrument(
-        level = "info",
-        skip_all,
-        fields(context_index, max_contexts = self.kappa_setups.len())
-    )]
-    pub fn validate_context_index(&self, context_index: u32) -> Result<(), TrxError> {
-        if context_index as usize >= self.kappa_setups.len() {
-            let max_msg = if self.kappa_setups.is_empty() {
-                "no kappa contexts available".to_string()
-            } else {
-                format!("exceeds maximum {}", self.kappa_setups.len() - 1)
-            };
-            return Err(TrxError::InvalidInput(format!(
-                "context_index {} {} (from trusted setup)",
-                context_index, max_msg
-            )));
-        }
-        Ok(())
-    }
-}
-
 /// Single-use randomized context for batch decryption.
 #[derive(Debug)]
 pub struct KappaSetup<B: PairingBackend> {
@@ -365,17 +325,6 @@ pub trait SetupManager<B: PairingBackend<Scalar = Fr>> {
     /// Verifies the integrity of an epoch setup.
     fn verify_epoch_setup(&self, setup: &EpochSetup<B>) -> Result<(), TrxError>;
 
-    /// Generates a trusted setup for the TrX system (legacy).
-    ///
-    /// **Note**: This combines global and epoch setup in one call. For new code,
-    /// prefer using `generate_global_setup` and `generate_epoch_setup` separately.
-    fn generate_trusted_setup(
-        &self,
-        rng: &mut impl RngCore,
-        max_batch_size: usize,
-        max_contexts: usize,
-    ) -> Result<TrustedSetup<B>, TrxError>;
-
     /// Aggregates public keys from all validators to create epoch keys.
     /// This is the "DKG" step but it's non-interactive - just aggregation of published keys.
     fn aggregate_epoch_keys(
@@ -384,9 +333,6 @@ pub trait SetupManager<B: PairingBackend<Scalar = Fr>> {
         threshold: u32,
         epoch_setup: Arc<EpochSetup<B>>,
     ) -> Result<EpochKeys<B>, TrxError>;
-
-    /// Verifies the integrity of a trusted setup.
-    fn verify_setup(&self, setup: &TrustedSetup<B>) -> Result<(), TrxError>;
 }
 
 impl<B: PairingBackend<Scalar = Fr>> SetupManager<B> for TrxCrypto<B> {
@@ -474,39 +420,6 @@ impl<B: PairingBackend<Scalar = Fr>> SetupManager<B> for TrxCrypto<B> {
         Ok(())
     }
 
-    #[instrument(level = "info", skip_all, fields(max_batch_size, max_contexts))]
-    fn generate_trusted_setup(
-        &self,
-        rng: &mut impl RngCore,
-        max_batch_size: usize,
-        max_contexts: usize,
-    ) -> Result<TrustedSetup<B>, TrxError> {
-        if max_batch_size == 0 {
-            return Err(TrxError::InvalidConfig("max_batch_size must be > 0".into()));
-        }
-        let mut seed = [0u8; 32];
-        rng.fill_bytes(&mut seed);
-        let srs = <tess::KZG as tess::PolynomialCommitment<B>>::setup(max_batch_size, &seed)
-            .map_err(|e| TrxError::Backend(e.to_string()))?;
-
-        let mut kappa_setups = Vec::with_capacity(max_contexts);
-        for idx in 0..max_contexts {
-            let kappa = B::Scalar::random(rng);
-            let elements = srs
-                .powers_of_g
-                .iter()
-                .map(|g| g.mul_scalar(&kappa))
-                .collect::<Vec<_>>();
-            kappa_setups.push(KappaSetup {
-                index: idx as u32,
-                elements,
-                used: AtomicBool::new(false),
-            });
-        }
-
-        Ok(TrustedSetup { srs, kappa_setups })
-    }
-
     #[instrument(
         level = "info",
         skip_all,
@@ -548,24 +461,6 @@ impl<B: PairingBackend<Scalar = Fr>> SetupManager<B> for TrxCrypto<B> {
             public_key: PublicKey { agg_key },
             epoch_setup,
         })
-    }
-
-    #[instrument(
-        level = "info",
-        skip_all,
-        fields(
-            powers_g1 = setup.srs.powers_of_g.len(),
-            powers_g2 = setup.srs.powers_of_h.len(),
-            kappa_len = setup.kappa_setups.len()
-        )
-    )]
-    fn verify_setup(&self, setup: &TrustedSetup<B>) -> Result<(), TrxError> {
-        if setup.srs.powers_of_g.is_empty() || setup.srs.powers_of_h.is_empty() {
-            return Err(TrxError::InvalidInput(
-                "trusted setup missing powers".into(),
-            ));
-        }
-        Ok(())
     }
 }
 

@@ -12,9 +12,9 @@
 //!
 //! Run with: `cargo run --example sdk_example`
 
-use std::collections::HashMap;
 use ed25519_dalek::SigningKey;
 use rand::{rngs::StdRng, thread_rng, SeedableRng};
+use std::collections::HashMap;
 use tess::PairingEngine;
 use trx::TrxMinion;
 use trx::{BatchContext, DecryptionContext, ValidatorId};
@@ -41,27 +41,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         NUM_VALIDATORS, THRESHOLD
     );
 
-    let client = TrxMinion::<PairingEngine>::new(&mut rng, NUM_VALIDATORS, THRESHOLD)?;
+    let minion = TrxMinion::<PairingEngine>::new(&mut rng, NUM_VALIDATORS, THRESHOLD)?;
 
     println!(
         "  - Generating global setup (max batch: {})",
         MAX_BATCH_SIZE
     );
 
-    let global_setup = client
+    let global_setup = minion
         .setup()
         .generate_global_setup(&mut rng, MAX_BATCH_SIZE)?;
 
-    println!(
-        "  - Generating epoch setup (contexts: {})",
-        MAX_CONTEXTS
-    );
-    let setup = client
-        .setup()
-        .generate_epoch_setup(&mut rng, 1, MAX_CONTEXTS, global_setup.clone())?;
+    println!("  - Generating epoch setup (contexts: {})", MAX_CONTEXTS);
+    let setup =
+        minion
+            .setup()
+            .generate_epoch_setup(&mut rng, 1, MAX_CONTEXTS, global_setup.clone())?;
 
     println!("  - Verifying epoch setup integrity...");
-    client.setup().verify_epoch_setup(&setup)?;
+    minion.setup().verify_epoch_setup(&setup)?;
     println!("  ✓ Setup verified successfully!\n");
 
     // ========================================================================
@@ -79,7 +77,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .zip(rngs.iter_mut())
         .map(|(id, rng)| {
             println!("    - Validator {} generating keypair...", id);
-            client.validator().keygen_single_validator(rng, id as u32)
+            minion.validator().keygen_single_validator(rng, id as u32)
         })
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -95,7 +93,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .collect();
 
     let epoch_keys =
-        client
+        minion
             .setup()
             .aggregate_epoch_keys(public_keys, THRESHOLD as u32, setup.clone())?;
 
@@ -130,7 +128,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         println!("  - Client {} encrypting: '{}'", i, payload);
 
-        let encrypted_tx = client.client().encrypt_transaction(
+        let encrypted_tx = minion.client().encrypt_transaction(
             &epoch_keys.public_key,
             payload.as_bytes(),
             metadata.as_bytes(),
@@ -149,7 +147,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Phase 4: Mempool Management");
     println!("  - Creating mempool (capacity: {})", MEMPOOL_CAPACITY);
 
-    let mut mempool = client.mempool().create(MEMPOOL_CAPACITY);
+    let mut mempool = minion.mempool().create(MEMPOOL_CAPACITY);
 
     println!(
         "  - Adding {} encrypted transactions to mempool...",
@@ -158,12 +156,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for (i, tx) in encrypted_txs.iter().enumerate() {
         // Verify before adding
-        client.client().verify_ciphertext(tx)?;
-        client.mempool().add_transaction(&mut mempool, tx.clone())?;
+        minion.client().verify_ciphertext(tx)?;
+        minion.mempool().add_transaction(&mut mempool, tx.clone())?;
         println!("    ✓ Transaction {} added", i);
     }
 
-    println!("  - Mempool size: {}", client.mempool().size(&mempool));
+    println!("  - Mempool size: {}", minion.mempool().size(&mempool));
     println!("  ✓ Mempool ready for batch proposal!\n");
 
     // ========================================================================
@@ -172,7 +170,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Phase 5: Batch Commitment (Proposer)");
     println!("  - Retrieving batch from mempool...");
 
-    let batch = client.mempool().get_batch(&mut mempool, MAX_BATCH_SIZE);
+    let batch = minion.mempool().get_batch(&mut mempool, MAX_BATCH_SIZE);
     println!("  - Batch size: {}", batch.len());
 
     let context = DecryptionContext {
@@ -185,20 +183,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         context.block_height, context.context_index
     );
 
-    let commitment = client.proposer().compute_digest(&batch, &context, &setup)?;
+    let commitment = minion.proposer().compute_digest(&batch, &context, &setup)?;
     println!("  ✓ Batch commitment computed!");
 
     println!(
         "  - Generating evaluation proofs for {} transactions...",
         batch.len()
     );
-    let eval_proofs = client
+    let eval_proofs = minion
         .proposer()
         .compute_eval_proofs(&batch, &context, &setup)?;
     println!("  ✓ {} proofs generated!", eval_proofs.len());
 
     println!("  - Verifying evaluation proofs...");
-    client
+    minion
         .proposer()
         .verify_eval_proofs(&setup, &commitment, &batch, &context, &eval_proofs)?;
     println!("  ✓ Batch proofs verified!\n");
@@ -225,7 +223,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .take(THRESHOLD + 1)
             .enumerate()
         {
-            let pd = client.validator().generate_partial_decryption(
+            let pd = minion.validator().generate_partial_decryption(
                 secret_share,
                 &commitment,
                 &context,
@@ -234,7 +232,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )?;
 
             // Verify the partial decryption
-            client
+            minion
                 .validator()
                 .verify_partial_decryption(&pd, &commitment, &public_keys)?;
 
@@ -255,7 +253,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         eval_proofs: &eval_proofs,
     };
 
-    let results = client.decryption().combine_and_decrypt(
+    let results = minion.decryption().combine_and_decrypt(
         partial_decryptions,
         batch_ctx,
         THRESHOLD as u32,

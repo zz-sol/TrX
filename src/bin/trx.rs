@@ -15,8 +15,8 @@ use ed25519_dalek::SigningKey;
 use rand::thread_rng;
 use tess::PairingEngine;
 use trx::{
-    BatchCommitment, BatchContext, DecryptionContext, EncryptedTransaction, EvalProof,
-    EpochSetup, PartialDecryption, PublicKey, SecretKeyShare, TrxMinion, ValidatorKeyPair,
+    BatchCommitment, BatchContext, DecryptionContext, EncryptedTransaction, EpochSetup, EvalProof,
+    PartialDecryption, PublicKey, SecretKeyShare, TrxMinion, ValidatorKeyPair,
 };
 
 type Backend = PairingEngine;

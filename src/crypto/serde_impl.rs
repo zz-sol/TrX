@@ -4,44 +4,8 @@ use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::sync::{atomic::AtomicBool, Arc};
 use tess::{CurvePoint, Fr, PairingBackend, SRS};
 
-use super::trx_crypto::{
-    EpochKeys, EpochSetup, GlobalSetup, KappaSetup, TrustedSetup, ValidatorKeyPair,
-};
+use super::trx_crypto::{EpochKeys, EpochSetup, GlobalSetup, KappaSetup, ValidatorKeyPair};
 use crate::core::types::{PublicKey, SecretKeyShare};
-
-// TrustedSetup
-impl<B: PairingBackend<Scalar = Fr>> Serialize for TrustedSetup<B> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("TrustedSetup", 2)?;
-        state.serialize_field("srs", &self.srs)?;
-        state.serialize_field("kappa_setups", &self.kappa_setups)?;
-        state.end()
-    }
-}
-
-impl<'de, B: PairingBackend<Scalar = Fr>> Deserialize<'de> for TrustedSetup<B> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(bound(deserialize = ""))]
-        struct Helper<B: PairingBackend<Scalar = Fr>> {
-            srs: SRS<B>,
-            kappa_setups: Vec<KappaSetup<B>>,
-        }
-
-        let helper = Helper::deserialize(deserializer)?;
-        Ok(TrustedSetup {
-            srs: helper.srs,
-            kappa_setups: helper.kappa_setups,
-        })
-    }
-}
 
 // GlobalSetup
 impl<B: PairingBackend<Scalar = Fr>> Serialize for GlobalSetup<B> {
