@@ -206,7 +206,7 @@ pub fn verify_validator_share<B: PairingBackend>(
 /// # Returns
 ///
 /// A 32-byte BLAKE3 digest used as the BLS signing message.
-fn validator_vote_message<B: PairingBackend>(
+pub fn validator_vote_message<B: PairingBackend>(
     vote: &[u8],
     partial_decryption: Option<&PartialDecryption<B>>,
 ) -> [u8; 32] {
@@ -239,7 +239,7 @@ fn validator_vote_message<B: PairingBackend>(
 /// # Returns
 ///
 /// A 32-byte BLAKE3 digest used as the BLS signing message.
-fn validator_share_message<B: PairingBackend>(
+pub fn validator_share_message<B: PairingBackend>(
     block_hash: &[u8],
     share: &PartialDecryption<B>,
 ) -> [u8; 32] {

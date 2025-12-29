@@ -17,7 +17,7 @@ use tess::{Fr, PairingBackend};
 /// # Example
 ///
 /// ```no_run
-/// use trx::sdk::TrxClient;
+/// use trx::TrxClient;
 /// use tess::PairingEngine;
 /// use rand::thread_rng;
 /// use std::sync::Arc;
@@ -73,7 +73,7 @@ impl<'a, B: PairingBackend<Scalar = Fr>> SetupPhase<'a, B> {
     /// # Example
     ///
     /// ```no_run
-    /// use trx::sdk::TrxClient;
+    /// use trx::TrxClient;
     /// use tess::PairingEngine;
     /// use rand::thread_rng;
     /// use std::sync::Arc;
@@ -128,7 +128,7 @@ impl<'a, B: PairingBackend<Scalar = Fr>> SetupPhase<'a, B> {
     /// # Example
     ///
     /// ```no_run
-    /// use trx::sdk::TrxClient;
+    /// use trx::TrxClient;
     /// use tess::PairingEngine;
     /// use rand::thread_rng;
     /// use std::sync::Arc;
@@ -180,7 +180,7 @@ impl<'a, B: PairingBackend<Scalar = Fr>> SetupPhase<'a, B> {
     /// # Example
     ///
     /// ```no_run
-    /// use trx::sdk::TrxClient;
+    /// use trx::TrxClient;
     /// use tess::PairingEngine;
     /// use rand::thread_rng;
     /// use std::sync::Arc;

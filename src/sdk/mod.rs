@@ -16,7 +16,7 @@
 //! ## Quick Start
 //!
 //! ```no_run
-//! use trx::sdk::{TrxClient, SetupPhase, ValidatorPhase, ClientPhase};
+//! use trx::{TrxClient, SetupPhase, ValidatorPhase, ClientPhase};
 //! use tess::PairingEngine;
 //! use rand::thread_rng;
 //!
@@ -70,7 +70,7 @@ use tess::{Fr, PairingBackend};
 /// # Example
 ///
 /// ```no_run
-/// use trx::sdk::TrxClient;
+/// use trx::TrxClient;
 /// use tess::PairingEngine;
 /// use rand::thread_rng;
 ///
@@ -101,7 +101,7 @@ where
     /// # Example
     ///
     /// ```no_run
-    /// use trx::sdk::TrxClient;
+    /// use trx::TrxClient;
     /// use tess::PairingEngine;
     /// use rand::thread_rng;
     ///

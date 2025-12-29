@@ -4,12 +4,15 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tess = { git = "https://github.com/zz-sol/Tess", features = ["blst"] }
-# tess = { path = "../Tess", features = ["blst"] }
+blake3 = "1"
+clap = { version = "4.5", features = ["derive"] }
+ed25519-dalek = { version = "2.1", features = ["rand_core"] }
 rand = "0.8"
 rand_core = "0.6"
-blake3 = "1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 solana-bls-signatures = { git = "https://github.com/anza-xyz/solana-sdk", package = "solana-bls-signatures", rev = "723ed3864816b0054762c613c02fba0ba9615fdf" }
-ed25519-dalek = { version = "2.1", features = ["rand_core"] }
+tess = { git = "https://github.com/zz-sol/Tess", features = ["blst"] }
+# tess = { path = "../Tess", features = ["blst"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"

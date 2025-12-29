@@ -94,6 +94,12 @@ jobs:
       - name: Test examples
         run: cargo test --examples --verbose --target ${{ matrix.target }}
 
+      - name: Build CLI binary
+        run: cargo build --release --bin trx --target ${{ matrix.target }}
+
+      - name: Test CLI binary
+        run: ./target/${{ matrix.target }}/release/trx demo
+
   # iOS-specific build check
   ios-build:
     name: iOS Build Check

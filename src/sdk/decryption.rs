@@ -19,7 +19,7 @@ use tess::{Fr, PairingBackend};
 /// # Example
 ///
 /// ```no_run
-/// use trx::sdk::TrxClient;
+/// use trx::TrxClient;
 /// use tess::PairingEngine;
 /// use trx::BatchContext;
 /// use rand::thread_rng;
@@ -100,7 +100,7 @@ where
     /// # Example
     ///
     /// ```no_run
-    /// use trx::sdk::TrxClient;
+    /// use trx::TrxClient;
     /// use tess::PairingEngine;
     /// use trx::{BatchContext, DecryptionContext};
     /// use rand::thread_rng;

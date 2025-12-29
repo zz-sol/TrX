@@ -18,7 +18,7 @@ use std::sync::Arc;
 use ed25519_dalek::SigningKey;
 use rand::{rngs::StdRng, thread_rng, SeedableRng};
 use tess::PairingEngine;
-use trx::sdk::TrxClient;
+use trx::TrxClient;
 use trx::{BatchContext, DecryptionContext, ValidatorId};
 
 /// Network configuration

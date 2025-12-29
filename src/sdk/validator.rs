@@ -19,7 +19,7 @@ use tess::{Ciphertext as TessCiphertext, Fr, PairingBackend};
 /// # Example
 ///
 /// ```no_run
-/// use trx::sdk::TrxClient;
+/// use trx::TrxClient;
 /// use tess::PairingEngine;
 /// use rand::thread_rng;
 ///
@@ -70,7 +70,7 @@ impl<'a, B: PairingBackend<Scalar = Fr>> ValidatorPhase<'a, B> {
     /// # Example
     ///
     /// ```no_run
-    /// use trx::sdk::TrxClient;
+    /// use trx::TrxClient;
     /// use tess::PairingEngine;
     /// use rand::thread_rng;
     ///
@@ -121,7 +121,7 @@ impl<'a, B: PairingBackend<Scalar = Fr>> ValidatorPhase<'a, B> {
     /// # Example
     ///
     /// ```no_run
-    /// use trx::sdk::TrxClient;
+    /// use trx::TrxClient;
     /// use tess::PairingEngine;
     /// use trx::DecryptionContext;
     /// use rand::thread_rng;
@@ -187,7 +187,7 @@ impl<'a, B: PairingBackend<Scalar = Fr>> ValidatorPhase<'a, B> {
     /// # Example
     ///
     /// ```no_run
-    /// use trx::sdk::TrxClient;
+    /// use trx::TrxClient;
     /// use tess::PairingEngine;
     /// use std::collections::HashMap;
     /// use rand::thread_rng;

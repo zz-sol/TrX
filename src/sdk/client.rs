@@ -17,7 +17,7 @@ use tess::{Fr, PairingBackend};
 /// # Example
 ///
 /// ```no_run
-/// use trx::sdk::TrxClient;
+/// use trx::TrxClient;
 /// use tess::PairingEngine;
 /// use ed25519_dalek::SigningKey;
 /// use rand::thread_rng;
@@ -77,7 +77,7 @@ impl<'a, B: PairingBackend<Scalar = Fr>> ClientPhase<'a, B> {
     /// # Example
     ///
     /// ```no_run
-    /// use trx::sdk::TrxClient;
+    /// use trx::TrxClient;
     /// use tess::PairingEngine;
     /// use ed25519_dalek::SigningKey;
     /// use rand::thread_rng;
@@ -131,7 +131,7 @@ impl<'a, B: PairingBackend<Scalar = Fr>> ClientPhase<'a, B> {
     /// # Example
     ///
     /// ```no_run
-    /// use trx::sdk::TrxClient;
+    /// use trx::TrxClient;
     /// use tess::PairingEngine;
     /// use rand::thread_rng;
     ///

@@ -30,5 +30,6 @@
 
 pub mod kzg;
 pub mod pre_computation;
+mod serde_impl;
 pub mod signatures;
 pub mod trx_crypto;

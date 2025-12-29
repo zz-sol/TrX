@@ -65,7 +65,7 @@
 //! mempool systems:
 //!
 //! ```rust,no_run
-//! use trx::sdk::TrxClient;
+//! use trx::TrxClient;
 //! use tess::PairingEngine;
 //! use ed25519_dalek::SigningKey;
 //! use std::sync::Arc;
@@ -184,18 +184,31 @@ mod core;
 mod crypto;
 mod mempool;
 mod network;
-pub mod sdk;
+mod sdk;
 mod utils;
 
-pub use core::errors::*;
-pub use core::types::*;
-pub use crypto::kzg::*;
-pub use crypto::pre_computation::*;
-pub use crypto::signatures::*;
-pub use crypto::trx_crypto::*;
-pub use mempool::*;
-pub use network::messages::*;
+// Re-export only SDK-related types
+pub use core::errors::TrxError;
+pub use core::types::{
+    BatchCommitment, BatchContext, DecryptionContext, DecryptionResult, EncryptedTransaction,
+    EvalProof, PartialDecryption, PublicKey, SecretKeyShare, ValidatorId,
+};
+pub use crypto::kzg::verify_eval_proofs;
+pub use crypto::pre_computation::PrecomputationEngine;
+pub use crypto::trx_crypto::{
+    BatchDecryption, EpochKeys, SetupManager, TransactionEncryption, TrustedSetup, TrxCrypto,
+    ValidatorKeyPair,
+};
+pub use mempool::EncryptedMempool;
+pub use network::messages::TrxMessage;
 pub use sdk::{
     ClientPhase, DecryptionPhase, MempoolPhase, ProposerPhase, SetupPhase, TrxClient,
     ValidatorPhase,
+};
+
+// Signature utilities for consensus messages
+pub use crypto::signatures::{
+    sign_validator_share, sign_validator_vote, validator_share_message, validator_vote_message,
+    verify_validator_share, verify_validator_vote, ValidatorSignature, ValidatorSigningKey,
+    ValidatorVerifyKey,
 };
