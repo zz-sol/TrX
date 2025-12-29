@@ -97,16 +97,11 @@ fn happy_path_encrypt_decrypt() {
         partials.push(pd);
     }
 
-    let batch_ctx = BatchContext {
-        batch: &batch,
-        context: &context,
-        commitment: &commitment,
-        eval_proofs: &eval_proofs,
-    };
+    let batch_ctx = BatchContext::new(batch, context, commitment, eval_proofs);
     let results = trx
         .combine_and_decrypt(
             partials,
-            batch_ctx,
+            &batch_ctx,
             threshold as u32,
             &setup,
             &epoch.public_key.agg_key,
@@ -158,16 +153,11 @@ fn batch_decrypt_flow() {
         }
     }
 
-    let batch_ctx = BatchContext {
-        batch: &batch,
-        context: &context,
-        commitment: &commitment,
-        eval_proofs: &eval_proofs,
-    };
+    let batch_ctx = BatchContext::new(batch, context, commitment, eval_proofs);
     let results = trx
         .combine_and_decrypt(
             partials,
-            batch_ctx,
+            &batch_ctx,
             threshold as u32,
             &setup,
             &epoch.public_key.agg_key,
@@ -565,15 +555,10 @@ fn test_not_enough_shares_error() {
     )
     .unwrap();
 
-    let batch_ctx = BatchContext {
-        batch: &batch,
-        context: &context,
-        commitment: &commitment,
-        eval_proofs: &eval_proofs,
-    };
+    let batch_ctx = BatchContext::new(batch, context, commitment, eval_proofs);
     let result = trx.combine_and_decrypt(
         vec![pd],
-        batch_ctx,
+        &batch_ctx,
         threshold as u32,
         &setup_arc,
         &epoch.public_key.agg_key,

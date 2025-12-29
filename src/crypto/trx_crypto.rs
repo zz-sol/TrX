@@ -4,7 +4,6 @@ use core::sync::atomic::AtomicBool;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
-use blake3::Hasher;
 use ed25519_dalek::{Signer, SigningKey};
 use rand_core::RngCore;
 use tess::{
@@ -536,13 +535,7 @@ fn client_signature_message<B: PairingBackend>(
     ciphertext: &TessCiphertext<B>,
     associated_data: &[u8],
 ) -> [u8; 32] {
-    let mut hasher = Hasher::new();
-    hasher.update(&ciphertext.payload);
-    hasher.update(associated_data);
-    let digest = hasher.finalize();
-    let mut output = [0u8; 32];
-    output.copy_from_slice(digest.as_bytes());
-    output
+    crate::utils::hash_transaction_for_signature::<B>(ciphertext, associated_data)
 }
 
 /// Batch decryption interface for consensus-layer transaction processing.
@@ -579,10 +572,10 @@ pub trait BatchDecryption<B: PairingBackend<Scalar = Fr>> {
 
     /// Combines partial decryptions and decrypts the batch.
     #[allow(clippy::too_many_arguments)]
-    fn combine_and_decrypt<'a>(
+    fn combine_and_decrypt(
         &self,
         partial_decryptions: Vec<PartialDecryption<B>>,
-        batch_ctx: BatchContext<'a, B>,
+        batch_ctx: &BatchContext<B>,
         threshold: u32,
         setup: &EpochSetup<B>,
         agg_key: &AggregateKey<B>,
@@ -655,16 +648,16 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
         level = "info",
         skip_all,
         fields(
-            batch_len = batch_ctx.batch.len(),
-            proofs_len = batch_ctx.eval_proofs.len(),
+            batch_len = batch_ctx.transactions.len(),
+            proofs_len = batch_ctx.proofs.len(),
             partials_len = partial_decryptions.len(),
             threshold
         )
     )]
-    fn combine_and_decrypt<'a>(
+    fn combine_and_decrypt(
         &self,
         partial_decryptions: Vec<PartialDecryption<B>>,
-        batch_ctx: BatchContext<'a, B>,
+        batch_ctx: &BatchContext<B>,
         threshold: u32,
         setup: &EpochSetup<B>,
         agg_key: &AggregateKey<B>,
@@ -695,13 +688,13 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
             return Err(TrxError::InvalidConfig("no parties in agg key".into()));
         }
 
-        if !batch_ctx.eval_proofs.is_empty() || !batch_ctx.batch.is_empty() {
+        if !batch_ctx.proofs.is_empty() || !batch_ctx.transactions.is_empty() {
             verify_eval_proofs(
                 setup,
-                batch_ctx.commitment,
-                batch_ctx.batch,
-                batch_ctx.context,
-                batch_ctx.eval_proofs,
+                &batch_ctx.commitment,
+                &batch_ctx.transactions,
+                &batch_ctx.context,
+                &batch_ctx.proofs,
             )?;
         }
 
@@ -716,8 +709,8 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
                 });
         }
 
-        let mut results = Vec::with_capacity(batch_ctx.batch.len());
-        for (idx, tx) in batch_ctx.batch.iter().enumerate() {
+        let mut results = Vec::with_capacity(batch_ctx.transactions.len());
+        for (idx, tx) in batch_ctx.transactions.iter().enumerate() {
             let partials = grouped.get(&idx).cloned().unwrap_or_default();
             if partials.len() < threshold as usize {
                 return Err(TrxError::NotEnoughShares {

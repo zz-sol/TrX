@@ -61,11 +61,9 @@
 //! # }
 //! ```
 
-use blake3::Hasher;
 use tess::{DensePolynomial, FieldElement, Fr, PairingBackend, PolynomialCommitment, KZG};
 use tracing::instrument;
 
-use crate::utils::scalar_from_hash;
 use crate::{
     BatchCommitment, DecryptionContext, EncryptedTransaction, EpochSetup, EvalProof, TrxError,
 };
@@ -196,34 +194,15 @@ pub(crate) fn batch_polynomial<B: PairingBackend<Scalar = Fr>>(
 ) -> DensePolynomial {
     let coeffs: Vec<Fr> = batch
         .iter()
-        .map(|tx| tx_commitment_scalar::<B>(tx, context))
+        .map(|tx| {
+            crate::utils::hash_transaction_for_commitment::<B>(
+                &tx.ciphertext,
+                &tx.associated_data,
+                context,
+            )
+        })
         .collect();
     DensePolynomial::from_coefficients_vec(coeffs)
-}
-
-/// Derives a scalar coefficient for a transaction within a specific context.
-///
-/// Computes `H(block_height || context_index || ciphertext || associated_data)`
-/// and maps the hash output to a field element using rejection sampling.
-///
-/// # Arguments
-///
-/// * `tx` - Encrypted transaction
-/// * `context` - Decryption context
-///
-/// # Returns
-///
-/// A field element in the scalar field of the pairing curve.
-fn tx_commitment_scalar<B: PairingBackend<Scalar = Fr>>(
-    tx: &EncryptedTransaction<B>,
-    context: &DecryptionContext,
-) -> B::Scalar {
-    let mut hasher = Hasher::new();
-    hasher.update(&context.block_height.to_le_bytes());
-    hasher.update(&context.context_index.to_le_bytes());
-    hasher.update(&tx.ciphertext.payload);
-    hasher.update(&tx.associated_data);
-    scalar_from_hash::<B>(hasher.finalize().as_bytes())
 }
 
 /// Verifies KZG evaluation proofs against a batch commitment.

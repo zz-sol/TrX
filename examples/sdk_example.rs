@@ -246,16 +246,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         partial_decryptions.len()
     );
 
-    let batch_ctx = BatchContext {
-        batch: &batch,
-        context: &context,
-        commitment: &commitment,
-        eval_proofs: &eval_proofs,
-    };
+    let batch_ctx = BatchContext::new(batch, context, commitment, eval_proofs);
 
     let results = minion.decryption().combine_and_decrypt(
         partial_decryptions,
-        batch_ctx,
+        &batch_ctx,
         THRESHOLD as u32,
         &setup,
         &epoch_keys.public_key,
@@ -276,7 +271,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("  Payload: {}", plaintext_str);
             println!(
                 "  Metadata: {:?}",
-                String::from_utf8_lossy(&batch[i].associated_data)
+                String::from_utf8_lossy(&batch_ctx.transactions[i].associated_data)
             );
             successful += 1;
         } else {
@@ -287,7 +282,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("=== Workflow Complete ===");
     println!("  - {} transactions encrypted", num_txs);
-    println!("  - {} transactions included in batch", batch.len());
+    println!("  - {} transactions included in batch", batch_ctx.len());
     println!("  - {} transactions successfully decrypted", successful);
 
     Ok(())

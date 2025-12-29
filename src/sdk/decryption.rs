@@ -120,25 +120,20 @@ where
     ///     context_index: 0,
     /// };
     ///
-    /// let batch_ctx = BatchContext {
-    ///     batch: &batch,
-    ///     context: &context,
-    ///     commitment: &commitment,
-    ///     eval_proofs: &eval_proofs,
-    /// };
+    /// let batch_ctx = BatchContext::new(batch, context, commitment, eval_proofs);
     ///
     /// // Collect partial decryptions from validators
     /// let mut partial_decryptions = vec![];
     ///
     /// # let validator_secret_shares = vec![];
     /// // For each transaction, collect threshold+1 shares
-    /// for (tx_index, tx) in batch.iter().enumerate() {
+    /// for (tx_index, tx) in batch_ctx.transactions.iter().enumerate() {
     ///     // Get shares from first threshold+1 validators
     ///     for share in validator_secret_shares.iter().take(4) {  // threshold + 1 = 3 + 1
     ///         let pd = client.validator().generate_partial_decryption(
     ///             share,
-    ///             &commitment,
-    ///             &context,
+    ///             &batch_ctx.commitment,
+    ///             &batch_ctx.context,
     ///             tx_index,
     ///             &tx.ciphertext,
     ///         )?;
@@ -149,7 +144,7 @@ where
     /// // Combine and decrypt
     /// let results = client.decryption().combine_and_decrypt(
     ///     partial_decryptions,
-    ///     batch_ctx,
+    ///     &batch_ctx,
     ///     3,
     ///     &setup,
     ///     &epoch_key,
@@ -165,10 +160,10 @@ where
     /// }
     /// # Ok::<(), trx::TrxError>(())
     /// ```
-    pub fn combine_and_decrypt<'b>(
+    pub fn combine_and_decrypt(
         &self,
         partial_decryptions: Vec<PartialDecryption<B>>,
-        batch_ctx: BatchContext<'b, B>,
+        batch_ctx: &BatchContext<B>,
         threshold: u32,
         setup: &EpochSetup<B>,
         agg_key: &PublicKey<B>,

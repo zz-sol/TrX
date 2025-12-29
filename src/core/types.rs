@@ -139,15 +139,78 @@ where
     }
 }
 
-/// Bundled batch inputs used during decryption.
-#[derive(Clone, Copy, Debug)]
-pub struct BatchContext<'a, B: PairingBackend<Scalar = Fr>> {
-    /// Batch of encrypted transactions
-    pub batch: &'a [EncryptedTransaction<B>],
-    /// Decryption context binding
-    pub context: &'a DecryptionContext,
-    /// Batch commitment
-    pub commitment: &'a BatchCommitment<B>,
-    /// Evaluation proofs for the batch
-    pub eval_proofs: &'a [EvalProof<B>],
+/// Bundled batch data structure with transactions and their cryptographic proofs.
+///
+/// This type represents a complete batch ready for consensus and decryption.
+/// It owns all the data needed to verify and decrypt a batch of transactions.
+///
+/// # Example
+///
+/// ```no_run
+/// # use trx::*;
+/// # use tess::PairingEngine;
+/// # fn example() -> Result<(), TrxError> {
+/// # let batch_txs = vec![];
+/// # let ctx = DecryptionContext { block_height: 1, context_index: 0 };
+/// # let commitment = unimplemented!();
+/// # let proofs = vec![];
+/// let batch_ctx = BatchContext::<PairingEngine>::new(
+///     batch_txs,
+///     ctx,
+///     commitment,
+///     proofs,
+/// );
+///
+/// // Use by reference when calling functions
+/// // some_function(&batch_ctx);
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Clone, Debug)]
+pub struct BatchContext<B: PairingBackend<Scalar = Fr>> {
+    /// Encrypted transactions in this batch
+    pub transactions: Vec<EncryptedTransaction<B>>,
+    /// Decryption context (block height and context index)
+    pub context: DecryptionContext,
+    /// KZG commitment over the batch polynomial
+    pub commitment: BatchCommitment<B>,
+    /// Evaluation proofs for each transaction
+    pub proofs: Vec<EvalProof<B>>,
+}
+
+impl<B: PairingBackend<Scalar = Fr>> BatchContext<B> {
+    /// Creates a new batch context with the given components.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `proofs.len() != transactions.len()` in debug builds.
+    pub fn new(
+        transactions: Vec<EncryptedTransaction<B>>,
+        context: DecryptionContext,
+        commitment: BatchCommitment<B>,
+        proofs: Vec<EvalProof<B>>,
+    ) -> Self {
+        debug_assert_eq!(
+            proofs.len(),
+            transactions.len(),
+            "proof count must match transaction count"
+        );
+        Self {
+            transactions,
+            context,
+            commitment,
+            proofs,
+        }
+    }
+
+    /// Returns the number of transactions in this batch.
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self) -> usize {
+        self.transactions.len()
+    }
+
+    /// Returns `true` if the batch contains no transactions.
+    pub fn is_empty(&self) -> bool {
+        self.transactions.is_empty()
+    }
 }

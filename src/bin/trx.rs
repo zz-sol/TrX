@@ -495,16 +495,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 context_index: context_index as u32,
             };
 
-            let batch_ctx = BatchContext {
-                batch: &batch_txs,
-                context: &context,
-                commitment: &comm,
-                eval_proofs: &proofs,
-            };
+            let batch_ctx = BatchContext::new(batch_txs, context, comm, proofs);
 
             let results = client.decryption().combine_and_decrypt(
                 partial_decryptions,
-                batch_ctx,
+                &batch_ctx,
                 threshold,
                 &epoch_setup,
                 &pk,
@@ -650,16 +645,11 @@ fn run_demo(
         }
     }
 
-    let batch_ctx = BatchContext {
-        batch: &batch,
-        context: &context,
-        commitment: &commitment,
-        eval_proofs: &eval_proofs,
-    };
+    let batch_ctx = BatchContext::new(batch, context, commitment, eval_proofs);
 
     let results = client.decryption().combine_and_decrypt(
         partial_decryptions,
-        batch_ctx,
+        &batch_ctx,
         threshold as u32,
         &setup,
         &epoch_keys.public_key,
@@ -680,7 +670,7 @@ fn run_demo(
     println!(
         "\n  ✓ {}/{} transactions decrypted successfully",
         successful,
-        batch.len()
+        batch_ctx.len()
     );
 
     Ok(())
