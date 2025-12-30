@@ -4,8 +4,8 @@
 //! partial decryptions from validators are aggregated to recover plaintexts.
 
 use crate::{
-    BatchContext, BatchDecryption, DecryptionResult, EpochSetup, PartialDecryption, PublicKey,
-    TrxCrypto, TrxError,
+    BatchContext, BatchDecryption, DecryptionResult, EpochSetup, PartialDecryption,
+    ThresholdEncryptionPublicKey, TrxCrypto, TrxError,
 };
 use tess::{Fr, PairingBackend};
 
@@ -166,7 +166,7 @@ where
         batch_ctx: &BatchContext<B>,
         threshold: u32,
         setup: &EpochSetup<B>,
-        agg_key: &PublicKey<B>,
+        agg_key: &ThresholdEncryptionPublicKey<B>,
     ) -> Result<Vec<DecryptionResult>, TrxError> {
         self.crypto.combine_and_decrypt(
             partial_decryptions,

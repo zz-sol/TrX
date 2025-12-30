@@ -21,7 +21,13 @@ fn generate_epoch_keys(
     parties: usize,
     threshold: u32,
     setup: Arc<EpochSetup<PairingEngine>>,
-) -> Result<(EpochKeys<PairingEngine>, Vec<SecretKeyShare<PairingEngine>>), TrxError> {
+) -> Result<
+    (
+        EpochKeys<PairingEngine>,
+        Vec<ThresholdEncryptionSecretKeyShare<PairingEngine>>,
+    ),
+    TrxError,
+> {
     let validators: Vec<ValidatorId> = (0..parties as u32).collect();
 
     // Generate all validator key pairs (simulates silent setup where each validator
@@ -38,11 +44,11 @@ fn generate_epoch_keys(
 
     // Phase 2: Aggregate the published public keys (non-interactive)
     // Only public keys are needed for aggregation
-    let public_keys = validator_keypairs
-        .into_iter()
-        .map(|kp| kp.public_key)
+    let public_keys: Vec<_> = validator_keypairs
+        .iter()
+        .map(|kp| kp.public_key.clone())
         .collect();
-    let epoch_keys = trx.aggregate_epoch_keys(public_keys, threshold, setup)?;
+    let epoch_keys = trx.aggregate_epoch_keys(&public_keys, threshold, setup)?;
 
     Ok((epoch_keys, validator_secret_keys))
 }

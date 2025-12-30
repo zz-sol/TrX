@@ -122,7 +122,7 @@ impl<'a, B: PairingBackend<Scalar = Fr>> SetupPhase<'a, B> {
     ///
     /// // Coordinator aggregates ONLY the public keys (validators keep secret shares private)
     /// let epoch_keys = client.setup().aggregate_epoch_keys(
-    ///     vec![kp0.public_key, kp1.public_key, kp2.public_key],
+    ///     &[kp0.public_key, kp1.public_key, kp2.public_key],
     ///     2,
     ///     setup.clone(),
     /// )?;
@@ -132,7 +132,7 @@ impl<'a, B: PairingBackend<Scalar = Fr>> SetupPhase<'a, B> {
     /// ```
     pub fn aggregate_epoch_keys(
         &self,
-        validator_public_keys: Vec<tess::PublicKey<B>>,
+        validator_public_keys: &[tess::PublicKey<B>],
         threshold: u32,
         setup: Arc<EpochSetup<B>>,
     ) -> Result<EpochKeys<B>, TrxError> {

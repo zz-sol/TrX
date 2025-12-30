@@ -20,7 +20,7 @@ use trx::TrxMinion;
 use trx::{BatchContext, DecryptionContext, ValidatorId};
 
 /// Network configuration
-const NUM_VALIDATORS: usize = 5;
+const NUM_VALIDATORS: usize = 8;
 const THRESHOLD: usize = 3;
 const MAX_BATCH_SIZE: usize = 10;
 const MAX_CONTEXTS: usize = 100;
@@ -87,7 +87,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Extract only public keys for aggregation
-    let public_keys = validator_keypairs
+    let public_keys: Vec<_> = validator_keypairs
         .iter()
         .map(|kp| kp.public_key.clone())
         .collect();
@@ -95,7 +95,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let epoch_keys =
         minion
             .setup()
-            .aggregate_epoch_keys(public_keys, THRESHOLD as u32, setup.clone())?;
+            .aggregate_epoch_keys(&public_keys, THRESHOLD as u32, setup.clone())?;
 
     println!("  ✓ Epoch keys ready for client encryption!\n");
 
@@ -209,7 +209,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut partial_decryptions = Vec::new();
 
-    // For each transaction, collect threshold+1 partial decryptions
+    // For each transaction, collect THRESHOLD+1 partial decryptions
+    // Note: Tess requires threshold+1 shares for Lagrange interpolation
     for (tx_index, tx) in batch.iter().enumerate() {
         println!(
             "    Transaction {} - collecting shares from {} validators:",
@@ -217,7 +218,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             THRESHOLD + 1
         );
 
-        // Get shares from first threshold+1 validators
+        // Get shares from first THRESHOLD+1 validators
         for (validator_idx, secret_share) in validator_secret_shares
             .iter()
             .take(THRESHOLD + 1)

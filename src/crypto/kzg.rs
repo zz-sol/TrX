@@ -41,11 +41,11 @@
 //! #     .iter()
 //! #     .map(|&id| crypto.keygen_single_validator(&mut rng, id))
 //! #     .collect::<Result<Vec<_>, _>>()?;
-//! # let public_keys = validator_keypairs
+//! # let public_keys: Vec<_> = validator_keypairs
 //! #     .iter()
 //! #     .map(|kp| kp.public_key.clone())
 //! #     .collect();
-//! # let epoch_keys = crypto.aggregate_epoch_keys(public_keys, 3, setup_arc.clone())?;
+//! # let epoch_keys = crypto.aggregate_epoch_keys(&public_keys, 3, setup_arc.clone())?;
 //! # let batch = vec![]; // encrypted transactions
 //! let context = DecryptionContext { block_height: 1, context_index: 0 };
 //!

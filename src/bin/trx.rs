@@ -16,7 +16,8 @@ use rand::thread_rng;
 use tess::PairingEngine;
 use trx::{
     BatchCommitment, BatchContext, DecryptionContext, EncryptedTransaction, EpochSetup, EvalProof,
-    PartialDecryption, PublicKey, SecretKeyShare, TrxMinion, ValidatorKeyPair,
+    PartialDecryption, ThresholdEncryptionPublicKey, ThresholdEncryptionSecretKeyShare, TrxMinion,
+    ValidatorKeyPair,
 };
 
 type Backend = PairingEngine;
@@ -326,13 +327,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let epoch_setup: EpochSetup<Backend> = serde_json::from_str(&setup_json)?;
 
             // Extract only public keys for aggregation
-            let public_keys = validator_keypairs
-                .into_iter()
-                .map(|kp| kp.public_key)
+            let public_keys: Vec<_> = validator_keypairs
+                .iter()
+                .map(|kp| kp.public_key.clone())
                 .collect();
 
             let epoch_keys = client.setup().aggregate_epoch_keys(
-                public_keys,
+                &public_keys,
                 threshold,
                 std::sync::Arc::new(epoch_setup),
             )?;
@@ -355,7 +356,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let client = TrxMinion::<Backend>::new(&mut rng, num_validators, threshold)?;
 
             let pk_json = fs::read_to_string(&public_key)?;
-            let pk: PublicKey<Backend> = serde_json::from_str(&pk_json)?;
+            let pk: ThresholdEncryptionPublicKey<Backend> = serde_json::from_str(&pk_json)?;
 
             let signing_key = SigningKey::generate(&mut rng);
             let encrypted_tx = client.client().encrypt_transaction(
@@ -428,7 +429,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let client = TrxMinion::<Backend>::new(&mut rng, num_validators, threshold)?;
 
             let share_json = fs::read_to_string(&secret_share)?;
-            let secret: SecretKeyShare<Backend> = serde_json::from_str(&share_json)?;
+            let secret: ThresholdEncryptionSecretKeyShare<Backend> =
+                serde_json::from_str(&share_json)?;
 
             let comm_json = fs::read_to_string(&commitment)?;
             let comm: BatchCommitment<Backend> = serde_json::from_str(&comm_json)?;
@@ -482,7 +484,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let epoch_setup: EpochSetup<Backend> = serde_json::from_str(&setup_json)?;
 
             let pk_json = fs::read_to_string(&public_key)?;
-            let pk: PublicKey<Backend> = serde_json::from_str(&pk_json)?;
+            let pk: ThresholdEncryptionPublicKey<Backend> = serde_json::from_str(&pk_json)?;
 
             let comm_json = fs::read_to_string(&commitment)?;
             let comm: BatchCommitment<Backend> = serde_json::from_str(&comm_json)?;
@@ -563,7 +565,7 @@ fn run_demo(
         .collect::<Result<Vec<_>, _>>()?;
 
     // Extract only public keys for aggregation
-    let public_keys = validator_keypairs
+    let public_keys: Vec<_> = validator_keypairs
         .iter()
         .map(|kp| kp.public_key.clone())
         .collect();
@@ -571,7 +573,7 @@ fn run_demo(
     let epoch_keys =
         client
             .setup()
-            .aggregate_epoch_keys(public_keys, threshold as u32, setup.clone())?;
+            .aggregate_epoch_keys(&public_keys, threshold as u32, setup.clone())?;
     println!("  ✓ Keys aggregated\n");
 
     let validator_secret_shares: Vec<_> = validator_keypairs

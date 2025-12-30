@@ -118,12 +118,12 @@ fn main() -> Result<(), trx::TrxError> {
         .iter()
         .map(|&id| minion.validator().keygen_single_validator(&mut rng, id))
         .collect::<Result<Vec<_>, _>>()?;
-    let public_keys = validator_keypairs
+    let public_keys: Vec<_> = validator_keypairs
         .iter()
         .map(|kp| kp.public_key.clone())
         .collect();
     let epoch_keys = minion.setup().aggregate_epoch_keys(
-        public_keys,
+        &public_keys,
         3,
         setup.clone()
     )?;
@@ -214,15 +214,10 @@ let pd = TrxCrypto::<PairingEngine>::generate_partial_decryption(
 
 ### Leader: Combine and Decrypt
 ```rust
-let batch_ctx = BatchContext {
-    batch: &batch,
-    context: &context,
-    commitment: &commitment,
-    eval_proofs: &eval_proofs,
-};
+let batch_ctx = BatchContext::new(batch, context, commitment, eval_proofs);
 let results = trx.combine_and_decrypt(
     partials,
-    batch_ctx,
+    &batch_ctx,
     threshold as u32,
     &epoch_setup,
     &epoch.public_key.agg_key,
@@ -302,7 +297,7 @@ leader    -> combine_and_decrypt (verifies KZG proofs, aggregates shares)
 | `BatchCommitment` | KZG commitment to the batch polynomial | [src/crypto/kzg.rs](src/crypto/kzg.rs) |
 | `EvalProof` | KZG opening `(point, value, proof)` for each tx | [src/crypto/kzg.rs](src/crypto/kzg.rs) |
 | `PartialDecryption` | Validator share for a single tx | [src/core/types.rs](src/core/types.rs) |
-| `BatchContext` | Bundle of `{batch, context, commitment, eval_proofs}` for decryption | [src/core/types.rs](src/core/types.rs) |
+| `BatchContext` | Owned bundle of `{transactions, context, commitment, proofs}` for batch operations | [src/core/types.rs](src/core/types.rs) |
 
 ## Core APIs
 

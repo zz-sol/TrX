@@ -4,8 +4,8 @@ use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::sync::{atomic::AtomicBool, Arc};
 use tess::{CurvePoint, Fr, PairingBackend, SRS};
 
-use super::trx_crypto::{EpochKeys, EpochSetup, GlobalSetup, KappaSetup, ValidatorKeyPair};
-use crate::core::types::{PublicKey, SecretKeyShare};
+use super::{EpochKeys, EpochSetup, GlobalSetup, KappaSetup, ValidatorKeyPair};
+use crate::core::types::{ThresholdEncryptionPublicKey, ThresholdEncryptionSecretKeyShare};
 
 // GlobalSetup
 impl<B: PairingBackend<Scalar = Fr>> Serialize for GlobalSetup<B> {
@@ -159,7 +159,7 @@ impl<'de, B: PairingBackend<Scalar = Fr>> Deserialize<'de> for EpochKeys<B> {
         #[serde(bound(deserialize = ""))]
         struct Helper<B: PairingBackend<Scalar = Fr>> {
             epoch_id: u64,
-            public_key: PublicKey<B>,
+            public_key: ThresholdEncryptionPublicKey<B>,
             epoch_setup: EpochSetup<B>,
         }
 
@@ -197,7 +197,7 @@ impl<'de, B: PairingBackend<Scalar = Fr>> Deserialize<'de> for ValidatorKeyPair<
         struct Helper<B: PairingBackend<Scalar = Fr>> {
             validator_id: u32,
             public_key: tess::PublicKey<B>,
-            secret_share: SecretKeyShare<B>,
+            secret_share: ThresholdEncryptionSecretKeyShare<B>,
         }
 
         let helper = Helper::deserialize(deserializer)?;

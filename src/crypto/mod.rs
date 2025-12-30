@@ -6,7 +6,10 @@
 //!
 //! # Submodules
 //!
-//! - [`trx_crypto`]: Main cryptographic engine and protocol trait implementations
+//! - [`engine`]: Cryptographic engine configuration and key generation helpers
+//! - [`setup`]: Setup types and key aggregation logic
+//! - [`encryption`]: Client-side transaction encryption and verification
+//! - [`decryption`]: Batch decryption operations for consensus processing
 //! - [`kzg`]: KZG polynomial commitments and evaluation proofs
 //! - [`signatures`]: Ed25519 (client) and BLS (validator) signature helpers
 //! - [`pre_computation`]: Caching layer for expensive KZG operations
@@ -28,8 +31,16 @@
 //!     └── BLS (validator consensus messages)
 //! ```
 
+pub mod decryption;
+pub mod encryption;
+pub mod engine;
 pub mod kzg;
 pub mod pre_computation;
 mod serde_impl;
+pub mod setup;
 pub mod signatures;
-pub mod trx_crypto;
+
+pub use decryption::BatchDecryption;
+pub use encryption::TransactionEncryption;
+pub use engine::TrxCrypto;
+pub use setup::{EpochKeys, EpochSetup, GlobalSetup, KappaSetup, SetupManager, ValidatorKeyPair};

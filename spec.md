@@ -30,11 +30,11 @@ pub const MAX_CONTEXTS_PER_EPOCH: usize = 100_000;
 pub const THREADS_FOR_CRYPTO: usize = 16;
 
 // Basic cryptographic types
-pub struct PublicKey {
+pub struct ThresholdEncryptionPublicKey {
     agg_key: AggregateKey,
 }
 
-pub struct SecretKeyShare {
+pub struct ThresholdEncryptionSecretKeyShare {
     share: Fr,
     index: u32,
 }
@@ -70,11 +70,11 @@ pub struct EvalProof {
     proof: G1Element,
 }
 
-pub struct BatchContext<'a> {
-    batch: &'a [EncryptedTransaction],
-    context: &'a DecryptionContext,
-    commitment: &'a BatchCommitment,
-    eval_proofs: &'a [EvalProof],
+pub struct BatchContext {
+    transactions: Vec<EncryptedTransaction>,
+    context: DecryptionContext,
+    commitment: BatchCommitment,
+    proofs: Vec<EvalProof>,
 }
 ```
 
@@ -126,7 +126,7 @@ pub trait SetupManager {
 
     /// Non-interactive public key aggregation to create epoch keys
     fn aggregate_epoch_keys(
-        validator_public_keys: Vec<PublicKey>,
+        validator_public_keys: &[PublicKey],
         threshold: u32,
         epoch_setup: Arc<EpochSetup>,
     ) -> Result<EpochKeys>;
@@ -243,7 +243,7 @@ pub trait BatchDecryption {
     /// Combine shares and decrypt batch
     fn combine_and_decrypt(
         partial_decryptions: Vec<PartialDecryption>,
-        batch_ctx: BatchContext,
+        batch_ctx: &BatchContext,
         threshold: u32,
         setup: &EpochSetup,
         agg_key: &AggregateKey,
@@ -479,7 +479,7 @@ let public_keys: Vec<_> = validator_keys.iter()
     .map(|kp| kp.public_key.clone())
     .collect();
 let epoch_keys = client.setup()
-    .aggregate_epoch_keys(public_keys, 2, epoch_setup.clone())?;
+    .aggregate_epoch_keys(&public_keys, 2, epoch_setup.clone())?;
 ```
 
 ### 8.3 Phase 2: Validator

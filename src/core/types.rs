@@ -15,16 +15,16 @@ pub type TxSignature = Ed25519Signature;
 /// Result of decrypting a transaction: Ok(plaintext) or Err(error message).
 pub type DecryptionResult = tess::DecryptionResult;
 
-/// Public encryption key wrapper.
+/// Threshold encryption public key wrapper.
 #[derive(Clone, Debug)]
-pub struct PublicKey<B: PairingBackend<Scalar = Fr>> {
+pub struct ThresholdEncryptionPublicKey<B: PairingBackend<Scalar = Fr>> {
     /// Aggregate key used for encryption and verification.
     pub agg_key: AggregateKey<B>,
 }
 
-/// Secret key share bound to a validator.
+/// Threshold encryption secret key share bound to a validator.
 #[derive(Debug, Clone)]
-pub struct SecretKeyShare<B: PairingBackend> {
+pub struct ThresholdEncryptionSecretKeyShare<B: PairingBackend> {
     pub share: B::Scalar,
     pub validator_id: ValidatorId,
 }

@@ -5,7 +5,7 @@ use tess::{CurvePoint, FieldElement, Fr, PairingBackend};
 
 use super::types::{
     BatchCommitment, DecryptionContext, EncryptedTransaction, EvalProof, PartialDecryption,
-    PublicKey, SecretKeyShare,
+    ThresholdEncryptionPublicKey, ThresholdEncryptionSecretKeyShare,
 };
 
 // Helper functions
@@ -44,8 +44,8 @@ where
     C::from_repr(&repr).map_err(E::custom)
 }
 
-// PublicKey
-impl<B: PairingBackend<Scalar = Fr>> Serialize for PublicKey<B> {
+// ThresholdEncryptionPublicKey
+impl<B: PairingBackend<Scalar = Fr>> Serialize for ThresholdEncryptionPublicKey<B> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -54,32 +54,32 @@ impl<B: PairingBackend<Scalar = Fr>> Serialize for PublicKey<B> {
     }
 }
 
-impl<'de, B: PairingBackend<Scalar = Fr>> Deserialize<'de> for PublicKey<B> {
+impl<'de, B: PairingBackend<Scalar = Fr>> Deserialize<'de> for ThresholdEncryptionPublicKey<B> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        Ok(PublicKey {
+        Ok(ThresholdEncryptionPublicKey {
             agg_key: tess::AggregateKey::deserialize(deserializer)?,
         })
     }
 }
 
-// SecretKeyShare
-impl<B: PairingBackend> Serialize for SecretKeyShare<B> {
+// ThresholdEncryptionSecretKeyShare
+impl<B: PairingBackend> Serialize for ThresholdEncryptionSecretKeyShare<B> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("SecretKeyShare", 2)?;
+        let mut state = serializer.serialize_struct("ThresholdEncryptionSecretKeyShare", 2)?;
         state.serialize_field("share", &field_to_bytes(&self.share))?;
         state.serialize_field("validator_id", &self.validator_id)?;
         state.end()
     }
 }
 
-impl<'de, B: PairingBackend> Deserialize<'de> for SecretKeyShare<B> {
+impl<'de, B: PairingBackend> Deserialize<'de> for ThresholdEncryptionSecretKeyShare<B> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -91,7 +91,7 @@ impl<'de, B: PairingBackend> Deserialize<'de> for SecretKeyShare<B> {
         }
 
         let helper = Helper::deserialize(deserializer)?;
-        Ok(SecretKeyShare {
+        Ok(ThresholdEncryptionSecretKeyShare {
             share: field_from_bytes(&helper.share)?,
             validator_id: helper.validator_id,
         })

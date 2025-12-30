@@ -4,8 +4,9 @@
 //! key generation and creating partial decryptions for batches.
 
 use crate::{
-    BatchCommitment, BatchDecryption, DecryptionContext, PartialDecryption, PublicKey,
-    SecretKeyShare, TrxCrypto, TrxError, ValidatorKeyPair,
+    BatchCommitment, BatchDecryption, DecryptionContext, PartialDecryption,
+    ThresholdEncryptionPublicKey, ThresholdEncryptionSecretKeyShare, TrxCrypto, TrxError,
+    ValidatorKeyPair,
 };
 use tess::{Ciphertext as TessCiphertext, Fr, PairingBackend};
 
@@ -151,7 +152,7 @@ impl<'a, B: PairingBackend<Scalar = Fr>> ValidatorPhase<'a, B> {
     /// ```
     pub fn generate_partial_decryption(
         &self,
-        secret_share: &SecretKeyShare<B>,
+        secret_share: &ThresholdEncryptionSecretKeyShare<B>,
         commitment: &BatchCommitment<B>,
         context: &DecryptionContext,
         tx_index: usize,
@@ -214,7 +215,7 @@ impl<'a, B: PairingBackend<Scalar = Fr>> ValidatorPhase<'a, B> {
         &self,
         partial_decryption: &PartialDecryption<B>,
         commitment: &BatchCommitment<B>,
-        public_keys: &std::collections::HashMap<u32, PublicKey<B>>,
+        public_keys: &std::collections::HashMap<u32, ThresholdEncryptionPublicKey<B>>,
     ) -> Result<(), TrxError> {
         TrxCrypto::<B>::verify_partial_decryption(partial_decryption, commitment, public_keys)
     }

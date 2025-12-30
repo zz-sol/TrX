@@ -3,7 +3,9 @@
 //! This phase handles client-side operations for encrypting transactions
 //! before submission to the encrypted mempool.
 
-use crate::{EncryptedTransaction, PublicKey, TransactionEncryption, TrxCrypto, TrxError};
+use crate::{
+    EncryptedTransaction, ThresholdEncryptionPublicKey, TransactionEncryption, TrxCrypto, TrxError,
+};
 use ed25519_dalek::SigningKey;
 use tess::{Fr, PairingBackend};
 
@@ -101,7 +103,7 @@ impl<'a, B: PairingBackend<Scalar = Fr>> ClientPhase<'a, B> {
     /// ```
     pub fn encrypt_transaction(
         &self,
-        epoch_key: &PublicKey<B>,
+        epoch_key: &ThresholdEncryptionPublicKey<B>,
         payload: &[u8],
         associated_data: &[u8],
         signing_key: &SigningKey,

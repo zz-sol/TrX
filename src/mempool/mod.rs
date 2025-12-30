@@ -26,11 +26,11 @@
 //! #     .iter()
 //! #     .map(|&id| crypto.keygen_single_validator(&mut rng, id))
 //! #     .collect::<Result<Vec<_>, _>>()?;
-//! # let public_keys = validator_keypairs
+//! # let public_keys: Vec<_> = validator_keypairs
 //! #     .iter()
 //! #     .map(|kp| kp.public_key.clone())
 //! #     .collect();
-//! # let epoch_keys = crypto.aggregate_epoch_keys(public_keys, 3, setup)?;
+//! # let epoch_keys = crypto.aggregate_epoch_keys(&public_keys, 3, setup)?;
 //! # let encrypted_tx = crypto.encrypt_transaction(&epoch_keys.public_key, b"data", b"metadata", &signing_key)?;
 //! // Create mempool with max 1000 transactions
 //! let mut mempool = EncryptedMempool::<tess::PairingEngine>::new(1000);

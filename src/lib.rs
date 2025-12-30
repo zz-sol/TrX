@@ -88,13 +88,13 @@
 //!     .iter()
 //!     .map(|&id| minion.validator().keygen_single_validator(&mut rng, id))
 //!     .collect::<Result<Vec<_>, _>>()?;
-//! let public_keys = validator_keypairs
+//! let public_keys: Vec<_> = validator_keypairs
 //!     .iter()
 //!     .map(|kp| kp.public_key.clone())
 //!     .collect();
 //! let epoch_keys = minion
 //!     .setup()
-//!     .aggregate_epoch_keys(public_keys, 3, setup.clone())?;
+//!     .aggregate_epoch_keys(&public_keys, 3, setup.clone())?;
 //!
 //! // Phase 3: Client encryption
 //! let signing_key = SigningKey::generate(&mut rng);
@@ -139,11 +139,11 @@
 //!     .iter()
 //!     .map(|&id| crypto.keygen_single_validator(&mut rng, id))
 //!     .collect::<Result<Vec<_>, _>>()?;
-//! let public_keys = validator_keypairs
+//! let public_keys: Vec<_> = validator_keypairs
 //!     .iter()
 //!     .map(|kp| kp.public_key.clone())
 //!     .collect();
-//! let epoch_keys = crypto.aggregate_epoch_keys(public_keys, 3, setup.clone())?;
+//! let epoch_keys = crypto.aggregate_epoch_keys(&public_keys, 3, setup.clone())?;
 //!
 //! // 4. Client encrypts transaction
 //! let signing_key = SigningKey::generate(&mut rng);
@@ -242,11 +242,12 @@ mod utils;
 pub use core::errors::TrxError;
 pub use core::types::{
     BatchCommitment, BatchContext, DecryptionContext, DecryptionResult, EncryptedTransaction,
-    EvalProof, PartialDecryption, PublicKey, SecretKeyShare, ValidatorId,
+    EvalProof, PartialDecryption, ThresholdEncryptionPublicKey, ThresholdEncryptionSecretKeyShare,
+    ValidatorId,
 };
 pub use crypto::kzg::verify_eval_proofs;
 pub use crypto::pre_computation::PrecomputationEngine;
-pub use crypto::trx_crypto::{
+pub use crypto::{
     BatchDecryption, EpochKeys, EpochSetup, GlobalSetup, SetupManager, TransactionEncryption,
     TrxCrypto, ValidatorKeyPair,
 };
