@@ -90,7 +90,7 @@ fn happy_path_encrypt_decrypt() {
         TrxCrypto::<PairingEngine>::compute_eval_proofs(&batch, &context, &setup).unwrap();
 
     let mut partials = Vec::new();
-    for validator_id in [0u32, 1u32, 2u32] {
+    for validator_id in [0u32, 1u32] {
         let share = &validator_shares[validator_id as usize];
         let pd = TrxCrypto::<PairingEngine>::generate_partial_decryption(
             share,
@@ -145,7 +145,7 @@ fn batch_decrypt_flow() {
 
     let mut partials = Vec::new();
     for (tx_index, tx) in batch.iter().enumerate() {
-        for validator_id in [0u32, 1u32, 2u32] {
+        for validator_id in [0u32, 1u32] {
             let share = &validator_shares[validator_id as usize];
             let pd = TrxCrypto::<PairingEngine>::generate_partial_decryption(
                 share,

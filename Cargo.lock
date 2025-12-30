@@ -762,7 +762,7 @@ checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 [[package]]
 name = "tess"
 version = "0.1.0"
-source = "git+https://github.com/zz-sol/Tess#9dbae5613fb289fe3660a83d90d914f85e6a1874"
+source = "git+https://github.com/zz-sol/Tess#96cc761640236cf02487e4e8019cb2e4d0f63b38"
 dependencies = [
  "blake3",
  "blstrs",
@@ -993,6 +993,6 @@ dependencies = [
 
 [[package]]
 name = "zmij"
-version = "1.0.2"
+version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f4a4e8e9dc5c62d159f04fcdbe07f4c3fb710415aab4754bf11505501e3251d"
+checksum = "e9747e91771f56fd7893e1164abd78febd14a670ceec257caad15e051de35f06"

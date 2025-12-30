@@ -632,7 +632,7 @@ fn run_demo(
     println!("Phase 6: Threshold Decryption");
     let mut partial_decryptions = Vec::new();
     for (tx_index, tx) in batch.iter().enumerate() {
-        for secret_share in validator_secret_shares.iter().take(threshold + 1) {
+        for secret_share in validator_secret_shares.iter().take(threshold) {
             let pd = client.validator().generate_partial_decryption(
                 secret_share,
                 &commitment,

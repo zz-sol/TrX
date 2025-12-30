@@ -209,20 +209,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut partial_decryptions = Vec::new();
 
-    // For each transaction, collect THRESHOLD+1 partial decryptions
-    // Note: Tess requires threshold+1 shares for Lagrange interpolation
+    // For each transaction, collect THRESHOLD partial decryptions
+    // Note: Tess requires threshold shares for Lagrange interpolation
     for (tx_index, tx) in batch.iter().enumerate() {
         println!(
             "    Transaction {} - collecting shares from {} validators:",
-            tx_index,
-            THRESHOLD + 1
+            tx_index, THRESHOLD
         );
 
-        // Get shares from first THRESHOLD+1 validators
-        for (validator_idx, secret_share) in validator_secret_shares
-            .iter()
-            .take(THRESHOLD + 1)
-            .enumerate()
+        // Get shares from first THRESHOLD validators
+        for (validator_idx, secret_share) in
+            validator_secret_shares.iter().take(THRESHOLD).enumerate()
         {
             let pd = minion.validator().generate_partial_decryption(
                 secret_share,

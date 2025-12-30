@@ -33,7 +33,7 @@ use tess::{Fr, PairingBackend};
 /// # let setup = Arc::new(todo!());
 /// # let agg_key = todo!();
 ///
-/// // Combine threshold+1 partial decryptions
+/// // Combine threshold partial decryptions
 /// let results = client.decryption().combine_and_decrypt(
 ///     partial_decryptions,
 ///     batch_ctx,
@@ -60,20 +60,20 @@ where
     /// This is the final step of threshold decryption, performed after:
     /// 1. Batch has been committed (KZG commitment + eval proofs)
     /// 2. Validators have generated partial decryptions
-    /// 3. At least `threshold + 1` partial decryptions have been collected
+    /// 3. At least `threshold` partial decryptions have been collected
     ///
     /// # Process
     ///
     /// For each transaction in the batch:
     /// 1. Verify KZG eval proof for batch integrity
-    /// 2. Collect `threshold + 1` partial decryptions for the transaction
+    /// 2. Collect `threshold` partial decryptions for the transaction
     /// 3. Use Lagrange interpolation to combine shares in G2
     /// 4. Apply combined key to TESS ciphertext to recover plaintext
     ///
     /// # Arguments
     ///
     /// * `partial_decryptions` - Vec of partial decryptions from validators
-    ///   (must have at least `threshold + 1` shares per transaction)
+    ///   (must have at least `threshold` shares per transaction)
     /// * `batch_ctx` - Batch context containing batch, context, commitment, and proofs
     /// * `threshold` - Minimum number of shares required (t in t-of-n threshold)
     /// * `setup` - The epoch setup used for the epoch
@@ -83,11 +83,11 @@ where
     ///
     /// - KZG proofs are verified before decryption to prevent batch manipulation
     /// - Lagrange interpolation uses validator IDs as evaluation points
-    /// - Requires exactly `threshold + 1` shares (not more, not less per transaction)
+    /// - Requires exactly `threshold` shares (not more, not less per transaction)
     ///
     /// # Errors
     ///
-    /// Returns `TrxError::NotEnoughShares` if fewer than `threshold + 1` shares
+    /// Returns `TrxError::NotEnoughShares` if fewer than `threshold` shares
     /// are provided for any transaction.
     ///
     /// Returns `TrxError::InvalidInput` if:
@@ -126,10 +126,10 @@ where
     /// let mut partial_decryptions = vec![];
     ///
     /// # let validator_secret_shares = vec![];
-    /// // For each transaction, collect threshold+1 shares
+    /// // For each transaction, collect threshold shares
     /// for (tx_index, tx) in batch_ctx.transactions.iter().enumerate() {
-    ///     // Get shares from first threshold+1 validators
-    ///     for share in validator_secret_shares.iter().take(4) {  // threshold + 1 = 3 + 1
+    ///     // Get shares from first threshold validators
+    ///     for share in validator_secret_shares.iter().take(3) {  // threshold = 3
     ///         let pd = client.validator().generate_partial_decryption(
     ///             share,
     ///             &batch_ctx.commitment,
