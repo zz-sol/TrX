@@ -9,5 +9,4 @@
 //! - [`errors`]: Error types and result handling
 
 pub mod errors;
-mod serde_impl;
 pub mod types;

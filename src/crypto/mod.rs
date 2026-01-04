@@ -36,7 +36,6 @@ pub mod encryption;
 pub mod engine;
 pub mod kzg;
 pub mod pre_computation;
-mod serde_impl;
 pub mod setup;
 pub mod signatures;
 

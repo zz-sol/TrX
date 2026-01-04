@@ -231,11 +231,13 @@
 
 extern crate alloc;
 
+pub mod cli;
 mod core;
 mod crypto;
 mod mempool;
 mod network;
 mod sdk;
+mod serde;
 mod utils;
 
 // Re-export only SDK-related types
