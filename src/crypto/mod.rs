@@ -39,8 +39,10 @@ pub mod pre_computation;
 mod serde_impl;
 pub mod setup;
 pub mod signatures;
+pub mod signed_share;
 
 pub use decryption::BatchDecryption;
 pub use encryption::TransactionEncryption;
 pub use engine::TrxCrypto;
 pub use setup::{EpochKeys, EpochSetup, GlobalSetup, KappaSetup, SetupManager, ValidatorKeyPair};
+pub use signed_share::SignedPartialDecryption;

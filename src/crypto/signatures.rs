@@ -28,7 +28,9 @@
 //!
 //! - [`sign_validator_vote`] / [`verify_validator_vote`] - Consensus votes
 //! - [`sign_validator_share`] / [`verify_validator_share`] - Decryption shares
+//! - [`sign_validator_share_bound`] / [`verify_validator_share_bound`] - Bound shares
 //! - [`validator_vote_message`] / [`validator_share_message`] - Message construction
+//! - [`validator_share_message_bound`] - Bound share message construction
 //!
 //! ## Type Aliases
 //!
@@ -68,7 +70,7 @@
 //! [`TransactionEncryption::verify_ciphertext`]: crate::TransactionEncryption::verify_ciphertext
 
 use blake3::Hasher;
-use solana_bls_signatures::{pubkey::VerifiablePubkey, SecretKey};
+use solana_bls_signatures::{pubkey::PubkeyProjective, pubkey::VerifiablePubkey, SecretKey};
 use tess::{CurvePoint, PairingBackend};
 use tracing::instrument;
 
@@ -82,6 +84,11 @@ pub type ValidatorVerifyKey = solana_bls_signatures::PubkeyCompressed;
 
 /// Validator's compressed BLS signature.
 pub type ValidatorSignature = solana_bls_signatures::SignatureCompressed;
+
+/// Derive a validator verification key from a signing key.
+pub fn validator_verify_key(signing_key: &ValidatorSigningKey) -> ValidatorVerifyKey {
+    PubkeyProjective::from_secret(signing_key).into()
+}
 
 /// Signs a validator vote, optionally including a partial decryption.
 ///
@@ -185,6 +192,24 @@ pub fn sign_validator_share<B: PairingBackend>(
     signing_key.sign(message.as_ref()).into()
 }
 
+/// Signs a decryption share bound to a batch commitment and ciphertext hash.
+///
+/// This enforces strict binding between a share and the specific batch/transaction.
+#[instrument(
+    level = "info",
+    skip_all,
+    fields(validator_id = share.validator_id, tx_index = share.tx_index)
+)]
+pub fn sign_validator_share_bound<B: PairingBackend>(
+    signing_key: &ValidatorSigningKey,
+    commitment_hash: &[u8; 32],
+    ciphertext_hash: &[u8; 32],
+    share: &PartialDecryption<B>,
+) -> ValidatorSignature {
+    let message = validator_share_message_bound(commitment_hash, ciphertext_hash, share);
+    signing_key.sign(message.as_ref()).into()
+}
+
 /// Verifies a decryption share signature.
 ///
 /// # Arguments
@@ -209,6 +234,29 @@ pub fn verify_validator_share<B: PairingBackend>(
     share: &PartialDecryption<B>,
 ) -> Result<(), TrxError> {
     let message = validator_share_message(block_hash, share);
+    let ok = verify_key
+        .verify_signature(signature, message.as_ref())
+        .map_err(|err| TrxError::InvalidInput(format!("invalid validator signature: {err}")))?;
+    if !ok {
+        return Err(TrxError::InvalidInput("invalid validator signature".into()));
+    }
+    Ok(())
+}
+
+/// Verifies a commitment-bound decryption share signature.
+#[instrument(
+    level = "info",
+    skip_all,
+    fields(validator_id = share.validator_id, tx_index = share.tx_index)
+)]
+pub fn verify_validator_share_bound<B: PairingBackend>(
+    verify_key: &ValidatorVerifyKey,
+    signature: &ValidatorSignature,
+    commitment_hash: &[u8; 32],
+    ciphertext_hash: &[u8; 32],
+    share: &PartialDecryption<B>,
+) -> Result<(), TrxError> {
+    let message = validator_share_message_bound(commitment_hash, ciphertext_hash, share);
     let ok = verify_key
         .verify_signature(signature, message.as_ref())
         .map_err(|err| TrxError::InvalidInput(format!("invalid validator signature: {err}")))?;
@@ -270,6 +318,27 @@ pub fn validator_share_message<B: PairingBackend>(
     let mut hasher = Hasher::new();
     hasher.update(b"trx:decryption-share:v1");
     hasher.update(block_hash);
+    hasher.update(&share.validator_id.to_le_bytes());
+    hasher.update(&share.tx_index.to_le_bytes());
+    hasher.update(&share.context.block_height.to_le_bytes());
+    hasher.update(&share.context.context_index.to_le_bytes());
+    hasher.update(share.pd.to_repr().as_ref());
+    let digest = hasher.finalize();
+    let mut out = [0u8; 32];
+    out.copy_from_slice(digest.as_bytes());
+    out
+}
+
+/// Constructs the signing message for commitment-bound decryption shares.
+pub fn validator_share_message_bound<B: PairingBackend>(
+    commitment_hash: &[u8; 32],
+    ciphertext_hash: &[u8; 32],
+    share: &PartialDecryption<B>,
+) -> [u8; 32] {
+    let mut hasher = Hasher::new();
+    hasher.update(b"trx:decryption-share-bound:v1");
+    hasher.update(commitment_hash);
+    hasher.update(ciphertext_hash);
     hasher.update(&share.validator_id.to_le_bytes());
     hasher.update(&share.tx_index.to_le_bytes());
     hasher.update(&share.context.block_height.to_le_bytes());

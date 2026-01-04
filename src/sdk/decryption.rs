@@ -4,8 +4,8 @@
 //! partial decryptions from validators are aggregated to recover plaintexts.
 
 use crate::{
-    BatchContext, BatchDecryption, DecryptionResult, EpochSetup, PartialDecryption,
-    ThresholdEncryptionPublicKey, TrxCrypto, TrxError,
+    verify_validator_share_bound, BatchContext, BatchDecryption, DecryptionResult, EpochSetup,
+    PartialDecryption, SignedPartialDecryption, ThresholdEncryptionPublicKey, TrxCrypto, TrxError,
 };
 use tess::{Fr, PairingBackend};
 
@@ -175,5 +175,48 @@ where
             setup,
             &agg_key.agg_key,
         )
+    }
+
+    /// Combine and decrypt with signed, commitment-bound shares.
+    pub fn combine_and_decrypt_signed(
+        &self,
+        signed_partial_decryptions: Vec<SignedPartialDecryption<B>>,
+        batch_ctx: &BatchContext<B>,
+        threshold: u32,
+        setup: &EpochSetup<B>,
+        agg_key: &ThresholdEncryptionPublicKey<B>,
+    ) -> Result<Vec<DecryptionResult>, TrxError> {
+        let commitment_hash = crate::utils::hash_commitment_for_signature(&batch_ctx.commitment);
+        for signed in &signed_partial_decryptions {
+            let share = &signed.share;
+            if share.context.block_height != batch_ctx.context.block_height
+                || share.context.context_index != batch_ctx.context.context_index
+            {
+                return Err(TrxError::InvalidInput(
+                    "partial decryptions have mismatched contexts".into(),
+                ));
+            }
+            let tx = batch_ctx
+                .transactions
+                .get(share.tx_index)
+                .ok_or_else(|| TrxError::InvalidInput("invalid tx index".into()))?;
+            let ciphertext_hash = crate::utils::hash_ciphertext_for_share_signature(
+                &tx.ciphertext,
+                &tx.associated_data,
+            );
+            verify_validator_share_bound(
+                &signed.validator_vk,
+                &signed.signature,
+                &commitment_hash,
+                &ciphertext_hash,
+                share,
+            )?;
+        }
+
+        let shares = signed_partial_decryptions
+            .into_iter()
+            .map(|signed| signed.share)
+            .collect();
+        self.combine_and_decrypt(shares, batch_ctx, threshold, setup, agg_key)
     }
 }

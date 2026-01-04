@@ -248,8 +248,8 @@ pub use core::types::{
 pub use crypto::kzg::verify_eval_proofs;
 pub use crypto::pre_computation::PrecomputationEngine;
 pub use crypto::{
-    BatchDecryption, EpochKeys, EpochSetup, GlobalSetup, SetupManager, TransactionEncryption,
-    TrxCrypto, ValidatorKeyPair,
+    BatchDecryption, EpochKeys, EpochSetup, GlobalSetup, SetupManager, SignedPartialDecryption,
+    TransactionEncryption, TrxCrypto, ValidatorKeyPair,
 };
 pub use mempool::EncryptedMempool;
 pub use network::messages::TrxMessage;
@@ -260,7 +260,8 @@ pub use sdk::{
 
 // Signature utilities for consensus messages
 pub use crypto::signatures::{
-    sign_validator_share, sign_validator_vote, validator_share_message, validator_vote_message,
-    verify_validator_share, verify_validator_vote, ValidatorSignature, ValidatorSigningKey,
-    ValidatorVerifyKey,
+    sign_validator_share, sign_validator_share_bound, sign_validator_vote, validator_share_message,
+    validator_share_message_bound, validator_verify_key, validator_vote_message,
+    verify_validator_share, verify_validator_share_bound, verify_validator_vote,
+    ValidatorSignature, ValidatorSigningKey, ValidatorVerifyKey,
 };

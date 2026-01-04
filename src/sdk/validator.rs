@@ -4,9 +4,9 @@
 //! key generation and creating partial decryptions for batches.
 
 use crate::{
-    BatchCommitment, BatchDecryption, DecryptionContext, PartialDecryption,
-    ThresholdEncryptionPublicKey, ThresholdEncryptionSecretKeyShare, TrxCrypto, TrxError,
-    ValidatorKeyPair,
+    sign_validator_share_bound, validator_verify_key, BatchCommitment, BatchDecryption,
+    DecryptionContext, PartialDecryption, SignedPartialDecryption, ThresholdEncryptionPublicKey,
+    ThresholdEncryptionSecretKeyShare, TrxCrypto, TrxError, ValidatorKeyPair, ValidatorSigningKey,
 };
 use tess::{Ciphertext as TessCiphertext, Fr, PairingBackend};
 
@@ -165,6 +165,39 @@ impl<'a, B: PairingBackend<Scalar = Fr>> ValidatorPhase<'a, B> {
             tx_index,
             ciphertext,
         )
+    }
+
+    /// Generate a signed partial decryption bound to batch commitment and context.
+    ///
+    /// The signature covers commitment hash, context, tx index, and ciphertext hash.
+    pub fn generate_signed_partial_decryption(
+        &self,
+        signing_key: &ValidatorSigningKey,
+        secret_share: &ThresholdEncryptionSecretKeyShare<B>,
+        commitment: &BatchCommitment<B>,
+        context: &DecryptionContext,
+        tx_index: usize,
+        ciphertext: &TessCiphertext<B>,
+        associated_data: &[u8],
+    ) -> Result<SignedPartialDecryption<B>, TrxError> {
+        let share = self.generate_partial_decryption(
+            secret_share,
+            commitment,
+            context,
+            tx_index,
+            ciphertext,
+        )?;
+        let commitment_hash = crate::utils::hash_commitment_for_signature(commitment);
+        let ciphertext_hash =
+            crate::utils::hash_ciphertext_for_share_signature(ciphertext, associated_data);
+        let signature =
+            sign_validator_share_bound(signing_key, &commitment_hash, &ciphertext_hash, &share);
+        let validator_vk = validator_verify_key(signing_key);
+        Ok(SignedPartialDecryption {
+            share,
+            signature,
+            validator_vk,
+        })
     }
 
     /// Verify a partial decryption from another validator.

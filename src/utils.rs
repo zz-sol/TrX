@@ -1,7 +1,7 @@
 use blake3::Hasher;
-use tess::{Ciphertext as TessCiphertext, FieldElement, Fr, PairingBackend};
+use tess::{Ciphertext as TessCiphertext, CurvePoint, FieldElement, Fr, PairingBackend};
 
-use crate::DecryptionContext;
+use crate::{BatchCommitment, DecryptionContext};
 
 /// Maximum attempts for rejection sampling to prevent infinite loops.
 const MAX_REJECTION_SAMPLING_ATTEMPTS: u64 = 1000;
@@ -77,6 +77,27 @@ pub(crate) fn hash_transaction_for_signature<B: PairingBackend>(
     let mut output = [0u8; 32];
     output.copy_from_slice(digest.as_bytes());
     output
+}
+
+/// Hashes a batch commitment for binding decryption shares to a batch.
+pub(crate) fn hash_commitment_for_signature<B: PairingBackend>(
+    commitment: &BatchCommitment<B>,
+) -> [u8; 32] {
+    let mut hasher = Hasher::new();
+    hasher.update(commitment.com.to_repr().as_ref());
+    hasher.update(&commitment.polynomial_degree.to_le_bytes());
+    let digest = hasher.finalize();
+    let mut output = [0u8; 32];
+    output.copy_from_slice(digest.as_bytes());
+    output
+}
+
+/// Hashes a ciphertext for decryption-share signatures.
+pub(crate) fn hash_ciphertext_for_share_signature<B: PairingBackend>(
+    ciphertext: &TessCiphertext<B>,
+    associated_data: &[u8],
+) -> [u8; 32] {
+    hash_transaction_for_signature::<B>(ciphertext, associated_data)
 }
 
 /// Hashes transaction for batch commitment polynomial construction.
