@@ -536,8 +536,6 @@ fn run_demo(
     num_txs: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use rand::{rngs::StdRng, SeedableRng};
-    use std::collections::HashMap;
-
     println!("========================================");
     println!("      TrX Encrypted Mempool Demo");
     println!("========================================\n");
@@ -579,10 +577,6 @@ fn run_demo(
     let validator_secret_shares: Vec<_> = validator_keypairs
         .iter()
         .map(|kp| kp.secret_share.clone())
-        .collect();
-
-    let public_keys: HashMap<u32, _> = (0..num_validators as u32)
-        .map(|id| (id, epoch_keys.public_key.clone()))
         .collect();
 
     // Phase 3: Client encryption
@@ -640,9 +634,12 @@ fn run_demo(
                 tx_index,
                 &tx.ciphertext,
             )?;
-            client
-                .validator()
-                .verify_partial_decryption(&pd, &commitment, &public_keys)?;
+            client.validator().verify_partial_decryption(
+                &pd,
+                &commitment,
+                &tx.ciphertext,
+                &epoch_keys.public_key,
+            )?;
             partial_decryptions.push(pd);
         }
     }

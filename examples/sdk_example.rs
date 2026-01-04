@@ -14,10 +14,9 @@
 
 use ed25519_dalek::SigningKey;
 use rand::{rngs::StdRng, thread_rng, SeedableRng};
-use std::collections::HashMap;
 use tess::PairingEngine;
 use trx::TrxMinion;
-use trx::{BatchContext, DecryptionContext, ValidatorId};
+use trx::{BatchContext, DecryptionContext, ValidatorSigningKey};
 
 /// Network configuration
 const NUM_VALIDATORS: usize = 8;
@@ -105,11 +104,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|kp| kp.secret_share.clone())
         .collect();
 
-    // Build public key map for verification
-    // Note: We use the epoch public key for all validators since
-    // verify_partial_decryption uses the aggregate key, not individual keys
-    let public_keys: HashMap<ValidatorId, _> = (0..NUM_VALIDATORS as u32)
-        .map(|id| (id, epoch_keys.public_key.clone()))
+    // Validator BLS signing keys for share signatures
+    let validator_signing_keys: Vec<_> = (0..NUM_VALIDATORS)
+        .map(|_| ValidatorSigningKey::new())
         .collect();
 
     // ========================================================================
@@ -207,7 +204,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Phase 6: Threshold Decryption");
     println!("  - Validators generating partial decryptions...");
 
-    let mut partial_decryptions = Vec::new();
+    let mut signed_partial_decryptions = Vec::new();
 
     // For each transaction, collect THRESHOLD partial decryptions
     // Note: Tess requires threshold shares for Lagrange interpolation
@@ -221,33 +218,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for (validator_idx, secret_share) in
             validator_secret_shares.iter().take(THRESHOLD).enumerate()
         {
-            let pd = minion.validator().generate_partial_decryption(
+            let signing_key = &validator_signing_keys[validator_idx];
+            let signed = minion.validator().generate_signed_partial_decryption(
+                signing_key,
                 secret_share,
                 &commitment,
                 &context,
                 tx_index,
                 &tx.ciphertext,
+                &tx.associated_data,
             )?;
 
-            // Verify the partial decryption
-            minion
-                .validator()
-                .verify_partial_decryption(&pd, &commitment, &public_keys)?;
-
-            println!("      ✓ Validator {} share verified", validator_idx);
-            partial_decryptions.push(pd);
+            println!("      ✓ Validator {} share signed", validator_idx);
+            signed_partial_decryptions.push(signed);
         }
     }
 
     println!(
-        "  - Combining {} partial decryptions...",
-        partial_decryptions.len()
+        "  - Combining {} signed partial decryptions...",
+        signed_partial_decryptions.len()
     );
 
     let batch_ctx = BatchContext::new(batch, context, commitment, eval_proofs);
 
-    let results = minion.decryption().combine_and_decrypt(
-        partial_decryptions,
+    let results = minion.decryption().combine_and_decrypt_signed(
+        signed_partial_decryptions,
         &batch_ctx,
         THRESHOLD as u32,
         &setup,

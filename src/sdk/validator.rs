@@ -209,13 +209,13 @@ impl<'a, B: PairingBackend<Scalar = Fr>> ValidatorPhase<'a, B> {
     ///
     /// * `partial_decryption` - The partial decryption to verify
     /// * `commitment` - The batch commitment
-    /// * `public_keys` - Map of validator ID -> public key for all validators
+    /// * `ciphertext` - Ciphertext corresponding to the share
+    /// * `agg_key` - Aggregate public key containing validator public keys
     ///
     /// # Errors
     ///
     /// Returns `TrxError::InvalidInput` if:
-    /// - The partial decryption doesn't match the commitment
-    /// - The validator ID is not in the public keys map
+    /// - The validator ID is not in the aggregate key
     /// - The cryptographic verification fails
     ///
     /// # Example
@@ -223,7 +223,6 @@ impl<'a, B: PairingBackend<Scalar = Fr>> ValidatorPhase<'a, B> {
     /// ```no_run
     /// use trx::TrxMinion;
     /// use tess::PairingEngine;
-    /// use std::collections::HashMap;
     /// use rand::thread_rng;
     ///
     /// let mut rng = thread_rng();
@@ -231,13 +230,15 @@ impl<'a, B: PairingBackend<Scalar = Fr>> ValidatorPhase<'a, B> {
     ///
     /// # let partial_decryption = todo!();
     /// # let commitment = todo!();
-    /// # let public_keys: HashMap<u32, _> = HashMap::new();
+    /// # let ciphertext = todo!();
+    /// # let agg_key = todo!();
     ///
     /// // Verify partial decryption from validator before accepting
     /// match client.validator().verify_partial_decryption(
     ///     &partial_decryption,
     ///     &commitment,
-    ///     &public_keys,
+    ///     &ciphertext,
+    ///     &agg_key,
     /// ) {
     ///     Ok(_) => println!("Valid partial decryption"),
     ///     Err(e) => println!("Invalid partial decryption: {}", e),
@@ -248,8 +249,14 @@ impl<'a, B: PairingBackend<Scalar = Fr>> ValidatorPhase<'a, B> {
         &self,
         partial_decryption: &PartialDecryption<B>,
         commitment: &BatchCommitment<B>,
-        public_keys: &std::collections::HashMap<u32, ThresholdEncryptionPublicKey<B>>,
+        ciphertext: &TessCiphertext<B>,
+        agg_key: &ThresholdEncryptionPublicKey<B>,
     ) -> Result<(), TrxError> {
-        TrxCrypto::<B>::verify_partial_decryption(partial_decryption, commitment, public_keys)
+        TrxCrypto::<B>::verify_partial_decryption(
+            partial_decryption,
+            commitment,
+            ciphertext,
+            &agg_key.agg_key,
+        )
     }
 }

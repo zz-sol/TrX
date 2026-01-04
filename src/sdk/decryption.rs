@@ -15,6 +15,7 @@ use tess::{Fr, PairingBackend};
 /// - Combining partial decryptions from validators
 /// - Verifying batch integrity via KZG proofs
 /// - Recovering transaction plaintexts
+/// - Optionally verifying commitment-bound share signatures
 ///
 /// # Example
 ///
@@ -210,6 +211,12 @@ where
                 &commitment_hash,
                 &ciphertext_hash,
                 share,
+            )?;
+            TrxCrypto::<B>::verify_partial_decryption(
+                share,
+                &batch_ctx.commitment,
+                &tx.ciphertext,
+                &agg_key.agg_key,
             )?;
         }
 

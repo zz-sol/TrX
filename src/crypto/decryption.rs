@@ -1,6 +1,6 @@
 //! Batch decryption operations for consensus processing.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 use tess::{
     AggregateKey, Ciphertext as TessCiphertext, CurvePoint, DecryptionResult, Fr, PairingBackend,
@@ -11,8 +11,7 @@ use tracing::instrument;
 use super::engine::TrxCrypto;
 use crate::{
     verify_eval_proofs, BatchCommitment, BatchContext, DecryptionContext, EncryptedTransaction,
-    EvalProof, PartialDecryption, ThresholdEncryptionPublicKey, ThresholdEncryptionSecretKeyShare,
-    TrxError, ValidatorId,
+    EvalProof, PartialDecryption, ThresholdEncryptionSecretKeyShare, TrxError,
 };
 
 /// Batch decryption interface for consensus-layer transaction processing.
@@ -37,7 +36,8 @@ pub trait BatchDecryption<B: PairingBackend<Scalar = Fr>> {
     fn verify_partial_decryption(
         pd: &PartialDecryption<B>,
         commitment: &BatchCommitment<B>,
-        public_keys: &HashMap<ValidatorId, ThresholdEncryptionPublicKey<B>>,
+        ciphertext: &TessCiphertext<B>,
+        agg_key: &AggregateKey<B>,
     ) -> Result<(), TrxError>;
 
     /// Computes KZG evaluation proofs for each transaction in the batch.
@@ -100,10 +100,26 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
     fn verify_partial_decryption(
         pd: &PartialDecryption<B>,
         _commitment: &BatchCommitment<B>,
-        public_keys: &HashMap<ValidatorId, ThresholdEncryptionPublicKey<B>>,
+        ciphertext: &TessCiphertext<B>,
+        agg_key: &AggregateKey<B>,
     ) -> Result<(), TrxError> {
-        if !public_keys.contains_key(&pd.validator_id) {
-            return Err(TrxError::InvalidInput("unknown validator id".into()));
+        let validator_id = pd.validator_id as usize;
+        let pk = agg_key
+            .public_keys
+            .iter()
+            .find(|pk| pk.participant_id == validator_id)
+            .ok_or_else(|| TrxError::InvalidInput("unknown validator id".into()))?;
+
+        // Check e(pk_i, gamma_g2) == e(g1, pd_i) using multi-pairing.
+        let g1 = B::G1::generator();
+        let left = B::multi_pairing(&[pk.bls_key], &[ciphertext.gamma_g2])
+            .map_err(|err| TrxError::Backend(err.to_string()))?;
+        let right =
+            B::multi_pairing(&[g1], &[pd.pd]).map_err(|err| TrxError::Backend(err.to_string()))?;
+        if left != right {
+            return Err(TrxError::InvalidInput(
+                "invalid partial decryption share".into(),
+            ));
         }
         Ok(())
     }
