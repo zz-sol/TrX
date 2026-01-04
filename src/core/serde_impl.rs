@@ -4,9 +4,10 @@ use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use tess::{CurvePoint, FieldElement, Fr, PairingBackend};
 
 use super::types::{
-    BatchCommitment, DecryptionContext, EncryptedTransaction, EvalProof, PartialDecryption,
-    ThresholdEncryptionPublicKey, ThresholdEncryptionSecretKeyShare,
+    BatchCommitment, BatchProofs, DecryptionContext, EncryptedTransaction, EvalProof,
+    PartialDecryption, ThresholdEncryptionPublicKey, ThresholdEncryptionSecretKeyShare,
 };
+use solana_bls_signatures::{PubkeyCompressed, SignatureCompressed};
 
 // Helper functions
 fn field_to_bytes<F: FieldElement>(f: &F) -> Vec<u8> {
@@ -158,11 +159,16 @@ impl<B: PairingBackend> Serialize for PartialDecryption<B> {
         S: Serializer,
     {
         use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("PartialDecryption", 4)?;
+        let mut state = serializer.serialize_struct("PartialDecryption", 6)?;
         state.serialize_field("pd", &curve_point_to_bytes::<B::Scalar, _>(&self.pd))?;
         state.serialize_field("validator_id", &self.validator_id)?;
         state.serialize_field("context", &self.context)?;
         state.serialize_field("tx_index", &self.tx_index)?;
+        state.serialize_field("signature", &self.signature.as_ref().map(|s| s.0.to_vec()))?;
+        state.serialize_field(
+            "validator_vk",
+            &self.validator_vk.as_ref().map(|vk| vk.0.to_vec()),
+        )?;
         state.end()
     }
 }
@@ -178,14 +184,38 @@ impl<'de, B: PairingBackend> Deserialize<'de> for PartialDecryption<B> {
             validator_id: u32,
             context: DecryptionContext,
             tx_index: usize,
+            signature: Option<Vec<u8>>,
+            validator_vk: Option<Vec<u8>>,
         }
 
         let helper = Helper::deserialize(deserializer)?;
+        let signature = match helper.signature {
+            Some(bytes) => {
+                let raw: [u8; 96] = bytes
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| de::Error::custom("signature must be 96 bytes"))?;
+                Some(SignatureCompressed(raw))
+            }
+            None => None,
+        };
+        let validator_vk = match helper.validator_vk {
+            Some(bytes) => {
+                let raw: [u8; 48] = bytes
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| de::Error::custom("validator_vk must be 48 bytes"))?;
+                Some(PubkeyCompressed(raw))
+            }
+            None => None,
+        };
         Ok(PartialDecryption {
             pd: curve_point_from_bytes::<B::Scalar, _, _>(&helper.pd)?,
             validator_id: helper.validator_id,
             context: helper.context,
             tx_index: helper.tx_index,
+            signature,
+            validator_vk,
         })
     }
 }
@@ -220,6 +250,37 @@ impl<'de> Deserialize<'de> for DecryptionContext {
             block_height: helper.block_height,
             context_index: helper.context_index,
         })
+    }
+}
+
+// BatchProofs
+impl<B: PairingBackend<Scalar = Fr>> Serialize for BatchProofs<B> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("BatchProofs", 2)?;
+        state.serialize_field("commitment", &self.commitment)?;
+        state.serialize_field("proofs", &self.proofs)?;
+        state.end()
+    }
+}
+
+impl<'de, B: PairingBackend<Scalar = Fr>> Deserialize<'de> for BatchProofs<B> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(bound(deserialize = ""))]
+        struct Helper<B: PairingBackend<Scalar = Fr>> {
+            commitment: BatchCommitment<B>,
+            proofs: Vec<EvalProof<B>>,
+        }
+
+        let helper = Helper::deserialize(deserializer)?;
+        Ok(BatchProofs::new(helper.commitment, helper.proofs))
     }
 }
 

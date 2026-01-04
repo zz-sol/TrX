@@ -241,15 +241,15 @@ mod utils;
 // Re-export only SDK-related types
 pub use core::errors::TrxError;
 pub use core::types::{
-    BatchCommitment, BatchContext, DecryptionContext, DecryptionResult, EncryptedTransaction,
-    EvalProof, PartialDecryption, ThresholdEncryptionPublicKey, ThresholdEncryptionSecretKeyShare,
-    ValidatorId,
+    BatchCommitment, BatchContext, BatchProofs, DecryptionContext, DecryptionResult,
+    EncryptedTransaction, EvalProof, PartialDecryption, ThresholdEncryptionPublicKey,
+    ThresholdEncryptionSecretKeyShare, ValidatorId,
 };
 pub use crypto::kzg::verify_eval_proofs;
 pub use crypto::pre_computation::PrecomputationEngine;
 pub use crypto::{
-    BatchDecryption, EpochKeys, EpochSetup, GlobalSetup, SetupManager, SignedPartialDecryption,
-    TransactionEncryption, TrxCrypto, ValidatorKeyPair,
+    BatchDecryption, EpochKeys, EpochSetup, GlobalSetup, SetupManager, TransactionEncryption,
+    TrxCrypto, ValidatorKeyPair,
 };
 pub use mempool::EncryptedMempool;
 pub use network::messages::TrxMessage;

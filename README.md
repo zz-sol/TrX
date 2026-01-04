@@ -200,22 +200,24 @@ let eval_proofs = TrxCrypto::<PairingEngine>::compute_eval_proofs(&batch, &conte
 
 ### Validator: Generate Decryption Share
 ```rust
-// Each validator uses their own secret share (generated during silent setup)
+// Each validator uses their own secret share (generated during silent setup).
 let share = &my_secret_share;
-let pd = TrxCrypto::<PairingEngine>::generate_partial_decryption(
+let pd = trx.validator().generate_signed_partial_decryption(
+    &signing_key,
     share,
     &commitment,
     &context,
     tx_index,
     &batch[tx_index].ciphertext,
+    &batch[tx_index].associated_data,
 )?;
-// Optionally sign with: sign_validator_share(&pd, &bls_key)
 ```
 
 ### Leader: Combine and Decrypt
 ```rust
-let batch_ctx = BatchContext::new(batch, context, commitment, eval_proofs);
-let results = trx.combine_and_decrypt(
+let batch_proofs = BatchProofs::new(commitment, eval_proofs);
+let batch_ctx = BatchContext::new(batch, context, batch_proofs);
+let results = trx.decryption().combine_and_decrypt_signed(
     partials,
     &batch_ctx,
     threshold as u32,
@@ -231,7 +233,7 @@ All TrX and Tess types support JSON serialization via serde:
 
 ```rust
 use serde_json;
-use trx::{EncryptedTransaction, BatchCommitment, EvalProof, PartialDecryption};
+use trx::{BatchCommitment, BatchProofs, EncryptedTransaction, EvalProof, PartialDecryption};
 
 // Serialize encrypted transaction to JSON
 let json = serde_json::to_string(&encrypted_tx)?;
@@ -246,7 +248,7 @@ let share_json = serde_json::to_string(&partial_decryption)?;
 ```
 
 Serializable types include:
-- **Core types**: `EncryptedTransaction`, `PartialDecryption`, `DecryptionContext`, `BatchCommitment`, `EvalProof`
+- **Core types**: `EncryptedTransaction`, `PartialDecryption`, `DecryptionContext`, `BatchCommitment`, `BatchProofs`, `EvalProof`
 - **Crypto types**: `GlobalSetup`, `EpochSetup`, `KappaSetup`, `EpochKeys`, `ValidatorKeyPair`, `PublicKey`, `SecretKeyShare`
 - **Tess types**: `Ciphertext`, `AggregateKey`, `SRS`, `Params`, `PublicKey`, `SecretKey`
 

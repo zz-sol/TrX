@@ -16,7 +16,7 @@ use ed25519_dalek::SigningKey;
 use rand::{rngs::StdRng, thread_rng, SeedableRng};
 use tess::PairingEngine;
 use trx::TrxMinion;
-use trx::{BatchContext, DecryptionContext, ValidatorSigningKey};
+use trx::{BatchContext, BatchProofs, DecryptionContext, ValidatorSigningKey};
 
 /// Network configuration
 const NUM_VALIDATORS: usize = 8;
@@ -239,7 +239,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         signed_partial_decryptions.len()
     );
 
-    let batch_ctx = BatchContext::new(batch, context, commitment, eval_proofs);
+    let batch_ctx = BatchContext::new(batch, context, BatchProofs::new(commitment, eval_proofs));
 
     let results = minion.decryption().combine_and_decrypt_signed(
         signed_partial_decryptions,

@@ -5,8 +5,8 @@
 
 use crate::{
     sign_validator_share_bound, validator_verify_key, BatchCommitment, BatchDecryption,
-    DecryptionContext, PartialDecryption, SignedPartialDecryption,
-    ThresholdEncryptionSecretKeyShare, TrxCrypto, TrxError, ValidatorKeyPair, ValidatorSigningKey,
+    DecryptionContext, PartialDecryption, ThresholdEncryptionSecretKeyShare, TrxCrypto, TrxError,
+    ValidatorKeyPair, ValidatorSigningKey,
 };
 use tess::{Ciphertext as TessCiphertext, Fr, PairingBackend};
 
@@ -149,8 +149,8 @@ impl<'a, B: PairingBackend<Scalar = Fr>> ValidatorPhase<'a, B> {
         tx_index: usize,
         ciphertext: &TessCiphertext<B>,
         associated_data: &[u8],
-    ) -> Result<SignedPartialDecryption<B>, TrxError> {
-        let share = self.generate_partial_decryption(
+    ) -> Result<PartialDecryption<B>, TrxError> {
+        let mut share = self.generate_partial_decryption(
             secret_share,
             commitment,
             context,
@@ -162,13 +162,8 @@ impl<'a, B: PairingBackend<Scalar = Fr>> ValidatorPhase<'a, B> {
             crate::utils::hash_ciphertext_for_share_signature(ciphertext, associated_data);
         let signature =
             sign_validator_share_bound(signing_key, &commitment_hash, &ciphertext_hash, &share);
-        let validator_vk = validator_verify_key(signing_key);
-        Ok(SignedPartialDecryption {
-            share,
-            signature,
-            validator_vk,
-        })
+        share.signature = Some(signature);
+        share.validator_vk = Some(validator_verify_key(signing_key));
+        Ok(share)
     }
-
-    // Note: unsigned share verification is no longer exposed in the SDK.
 }

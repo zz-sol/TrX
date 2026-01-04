@@ -103,7 +103,7 @@ fn happy_path_encrypt_decrypt() {
         partials.push(pd);
     }
 
-    let batch_ctx = BatchContext::new(batch, context, commitment, eval_proofs);
+    let batch_ctx = BatchContext::new(batch, context, BatchProofs::new(commitment, eval_proofs));
     let results = trx
         .combine_and_decrypt(
             partials,
@@ -159,7 +159,7 @@ fn happy_path_encrypt_decrypt_signed_shares() {
         signed_partials.push(signed);
     }
 
-    let batch_ctx = BatchContext::new(batch, context, commitment, eval_proofs);
+    let batch_ctx = BatchContext::new(batch, context, BatchProofs::new(commitment, eval_proofs));
     let results = minion
         .decryption()
         .combine_and_decrypt_signed(
@@ -219,7 +219,11 @@ fn signed_share_rejects_commitment_mismatch() {
     let mut bad_commitment = commitment.clone();
     let g1 = <PairingEngine as tess::PairingBackend>::G1::generator();
     bad_commitment.com = bad_commitment.com.add(&g1);
-    let bad_ctx = BatchContext::new(batch.clone(), context, bad_commitment, eval_proofs.clone());
+    let bad_ctx = BatchContext::new(
+        batch.clone(),
+        context,
+        BatchProofs::new(bad_commitment, eval_proofs.clone()),
+    );
 
     let err = minion
         .decryption()
@@ -277,7 +281,7 @@ fn batch_decrypt_flow() {
         }
     }
 
-    let batch_ctx = BatchContext::new(batch, context, commitment, eval_proofs);
+    let batch_ctx = BatchContext::new(batch, context, BatchProofs::new(commitment, eval_proofs));
     let results = trx
         .combine_and_decrypt(
             partials,
@@ -679,7 +683,7 @@ fn test_not_enough_shares_error() {
     )
     .unwrap();
 
-    let batch_ctx = BatchContext::new(batch, context, commitment, eval_proofs);
+    let batch_ctx = BatchContext::new(batch, context, BatchProofs::new(commitment, eval_proofs));
     let result = trx.combine_and_decrypt(
         vec![pd],
         &batch_ctx,

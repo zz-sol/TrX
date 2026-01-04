@@ -17,9 +17,9 @@ use ed25519_dalek::SigningKey;
 use rand::thread_rng;
 use tess::PairingEngine;
 use trx::{
-    BatchCommitment, BatchContext, DecryptionContext, EncryptedTransaction, EpochSetup, EvalProof,
-    SignedPartialDecryption, ThresholdEncryptionPublicKey, ThresholdEncryptionSecretKeyShare,
-    TrxMinion, ValidatorKeyPair, ValidatorSigningKey,
+    BatchCommitment, BatchContext, BatchProofs, DecryptionContext, EncryptedTransaction,
+    EpochSetup, EvalProof, PartialDecryption, ThresholdEncryptionPublicKey,
+    ThresholdEncryptionSecretKeyShare, TrxMinion, ValidatorKeyPair, ValidatorSigningKey,
 };
 
 type Backend = PairingEngine;
@@ -507,7 +507,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let batch_txs: Vec<EncryptedTransaction<Backend>> = serde_json::from_str(&batch_json)?;
 
             let shares_json = fs::read_to_string(&signed_shares)?;
-            let signed_partial_decryptions: Vec<SignedPartialDecryption<Backend>> =
+            let signed_partial_decryptions: Vec<PartialDecryption<Backend>> =
                 serde_json::from_str(&shares_json)?;
 
             let setup_json = fs::read_to_string(&setup)?;
@@ -527,7 +527,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 context_index: context_index as u32,
             };
 
-            let batch_ctx = BatchContext::new(batch_txs, context, comm, proofs);
+            let batch_ctx = BatchContext::new(batch_txs, context, BatchProofs::new(comm, proofs));
 
             let results = client.decryption().combine_and_decrypt_signed(
                 signed_partial_decryptions,
@@ -682,7 +682,7 @@ fn run_demo(
         }
     }
 
-    let batch_ctx = BatchContext::new(batch, context, commitment, eval_proofs);
+    let batch_ctx = BatchContext::new(batch, context, BatchProofs::new(commitment, eval_proofs));
 
     let results = client.decryption().combine_and_decrypt_signed(
         signed_partial_decryptions,

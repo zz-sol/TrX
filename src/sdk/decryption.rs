@@ -5,7 +5,7 @@
 
 use crate::{
     verify_validator_share_bound, BatchContext, BatchDecryption, DecryptionResult, EpochSetup,
-    PartialDecryption, SignedPartialDecryption, ThresholdEncryptionPublicKey, TrxCrypto, TrxError,
+    PartialDecryption, ThresholdEncryptionPublicKey, TrxCrypto, TrxError,
 };
 use tess::{Fr, PairingBackend};
 
@@ -119,15 +119,15 @@ where
     /// Combine and decrypt with signed, commitment-bound shares.
     pub fn combine_and_decrypt_signed(
         &self,
-        signed_partial_decryptions: Vec<SignedPartialDecryption<B>>,
+        signed_partial_decryptions: Vec<PartialDecryption<B>>,
         batch_ctx: &BatchContext<B>,
         threshold: u32,
         setup: &EpochSetup<B>,
         agg_key: &ThresholdEncryptionPublicKey<B>,
     ) -> Result<Vec<DecryptionResult>, TrxError> {
-        let commitment_hash = crate::utils::hash_commitment_for_signature(&batch_ctx.commitment);
-        for signed in &signed_partial_decryptions {
-            let share = &signed.share;
+        let commitment_hash =
+            crate::utils::hash_commitment_for_signature(&batch_ctx.batch_proofs.commitment);
+        for share in &signed_partial_decryptions {
             if share.context.block_height != batch_ctx.context.block_height
                 || share.context.context_index != batch_ctx.context.context_index
             {
@@ -135,6 +135,13 @@ where
                     "partial decryptions have mismatched contexts".into(),
                 ));
             }
+            let signature = share
+                .signature
+                .as_ref()
+                .ok_or_else(|| TrxError::InvalidInput("missing share signature".into()))?;
+            let validator_vk = share.validator_vk.as_ref().ok_or_else(|| {
+                TrxError::InvalidInput("missing validator verification key".into())
+            })?;
             let tx = batch_ctx
                 .transactions
                 .get(share.tx_index)
@@ -144,24 +151,26 @@ where
                 &tx.associated_data,
             );
             verify_validator_share_bound(
-                &signed.validator_vk,
-                &signed.signature,
+                validator_vk,
+                signature,
                 &commitment_hash,
                 &ciphertext_hash,
                 share,
             )?;
             TrxCrypto::<B>::verify_partial_decryption(
                 share,
-                &batch_ctx.commitment,
+                &batch_ctx.batch_proofs.commitment,
                 &tx.ciphertext,
                 &agg_key.agg_key,
             )?;
         }
 
-        let shares = signed_partial_decryptions
-            .into_iter()
-            .map(|signed| signed.share)
-            .collect();
-        self.combine_and_decrypt(shares, batch_ctx, threshold, setup, agg_key)
+        self.combine_and_decrypt(
+            signed_partial_decryptions,
+            batch_ctx,
+            threshold,
+            setup,
+            agg_key,
+        )
     }
 }

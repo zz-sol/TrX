@@ -1,6 +1,7 @@
 //! Core protocol data types.
 
 use ed25519_dalek::{Signature as Ed25519Signature, VerifyingKey as Ed25519VerifyKey};
+use solana_bls_signatures::{PubkeyCompressed, SignatureCompressed};
 use tess::{AggregateKey, Ciphertext as TessCiphertext, Fr, PairingBackend};
 
 /// Validator identifier (u32 index).
@@ -64,6 +65,10 @@ pub struct PartialDecryption<B: PairingBackend> {
     pub context: DecryptionContext,
     /// Index of the transaction within the batch
     pub tx_index: usize,
+    /// Optional BLS signature binding this share to batch/context.
+    pub signature: Option<SignatureCompressed>,
+    /// Optional validator BLS verification key.
+    pub validator_vk: Option<PubkeyCompressed>,
 }
 
 /// Decryption context identifying a batch within consensus.
@@ -157,8 +162,7 @@ where
 /// let batch_ctx = BatchContext::<PairingEngine>::new(
 ///     batch_txs,
 ///     ctx,
-///     commitment,
-///     proofs,
+///     BatchProofs::new(commitment, proofs),
 /// );
 ///
 /// // Use by reference when calling functions
@@ -167,15 +171,27 @@ where
 /// # }
 /// ```
 #[derive(Clone, Debug)]
+pub struct BatchProofs<B: PairingBackend<Scalar = Fr>> {
+    /// KZG commitment over the batch polynomial.
+    pub commitment: BatchCommitment<B>,
+    /// Evaluation proofs for each transaction.
+    pub proofs: Vec<EvalProof<B>>,
+}
+
+impl<B: PairingBackend<Scalar = Fr>> BatchProofs<B> {
+    pub fn new(commitment: BatchCommitment<B>, proofs: Vec<EvalProof<B>>) -> Self {
+        Self { commitment, proofs }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct BatchContext<B: PairingBackend<Scalar = Fr>> {
     /// Encrypted transactions in this batch
     pub transactions: Vec<EncryptedTransaction<B>>,
     /// Decryption context (block height and context index)
     pub context: DecryptionContext,
-    /// KZG commitment over the batch polynomial
-    pub commitment: BatchCommitment<B>,
-    /// Evaluation proofs for each transaction
-    pub proofs: Vec<EvalProof<B>>,
+    /// Commitment and evaluation proofs for this batch
+    pub batch_proofs: BatchProofs<B>,
 }
 
 impl<B: PairingBackend<Scalar = Fr>> BatchContext<B> {
@@ -187,19 +203,17 @@ impl<B: PairingBackend<Scalar = Fr>> BatchContext<B> {
     pub fn new(
         transactions: Vec<EncryptedTransaction<B>>,
         context: DecryptionContext,
-        commitment: BatchCommitment<B>,
-        proofs: Vec<EvalProof<B>>,
+        batch_proofs: BatchProofs<B>,
     ) -> Self {
         debug_assert_eq!(
-            proofs.len(),
+            batch_proofs.proofs.len(),
             transactions.len(),
             "proof count must match transaction count"
         );
         Self {
             transactions,
             context,
-            commitment,
-            proofs,
+            batch_proofs,
         }
     }
 

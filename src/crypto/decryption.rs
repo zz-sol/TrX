@@ -95,6 +95,8 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
             validator_id: sk_share.validator_id,
             context: context.clone(),
             tx_index,
+            signature: None,
+            validator_vk: None,
         })
     }
 
@@ -143,7 +145,7 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
         skip_all,
         fields(
             batch_len = batch_ctx.transactions.len(),
-            proofs_len = batch_ctx.proofs.len(),
+            proofs_len = batch_ctx.batch_proofs.proofs.len(),
             partials_len = partial_decryptions.len(),
             threshold
         )
@@ -182,13 +184,13 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
             return Err(TrxError::InvalidConfig("no parties in agg key".into()));
         }
 
-        if !batch_ctx.proofs.is_empty() || !batch_ctx.transactions.is_empty() {
+        if !batch_ctx.batch_proofs.proofs.is_empty() || !batch_ctx.transactions.is_empty() {
             verify_eval_proofs(
                 setup,
-                &batch_ctx.commitment,
+                &batch_ctx.batch_proofs.commitment,
                 &batch_ctx.transactions,
                 &batch_ctx.context,
-                &batch_ctx.proofs,
+                &batch_ctx.batch_proofs.proofs,
             )?;
         }
 
