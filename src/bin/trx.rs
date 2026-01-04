@@ -3,9 +3,11 @@
 //! Usage:
 //!   trx setup --batch-size <N> --contexts <N> [--output <file>]
 //!   trx keygen --validator-id <ID> [--output <file>]
+//!   trx keygen-signing [--output <file>]
 //!   trx aggregate-keys --keypairs <file> --threshold <T> --setup <file> [--output <file>]
 //!   trx encrypt --public-key <file> --payload <data> --metadata <data> [--output <file>]
-//!   trx decrypt --batch <file> --shares <file> --threshold <T> --setup <file> --public-key <file>
+//!   trx partial-decrypt-signed --secret-share <file> --commitment <file> --encrypted-tx <file> --signing-key <file> --tx-index <N> --block-height <H>
+//!   trx decrypt-signed --batch <file> --signed-shares <file> --threshold <T> --setup <file> --public-key <file>
 
 use std::fs;
 use std::path::PathBuf;
@@ -16,8 +18,8 @@ use rand::thread_rng;
 use tess::PairingEngine;
 use trx::{
     BatchCommitment, BatchContext, DecryptionContext, EncryptedTransaction, EpochSetup, EvalProof,
-    PartialDecryption, ThresholdEncryptionPublicKey, ThresholdEncryptionSecretKeyShare, TrxMinion,
-    ValidatorKeyPair,
+    SignedPartialDecryption, ThresholdEncryptionPublicKey, ThresholdEncryptionSecretKeyShare,
+    TrxMinion, ValidatorKeyPair, ValidatorSigningKey,
 };
 
 type Backend = PairingEngine;
@@ -76,6 +78,13 @@ enum Commands {
         /// Threshold
         #[arg(long, default_value = "3")]
         threshold: usize,
+    },
+
+    /// Generate validator BLS signing key
+    KeygenSigning {
+        /// Output file (JSON)
+        #[arg(long, short = 'o', default_value = "validator_signing_key.json")]
+        output: PathBuf,
     },
 
     /// Aggregate validator public keys into epoch key
@@ -159,8 +168,8 @@ enum Commands {
         threshold: usize,
     },
 
-    /// Generate partial decryption share
-    PartialDecrypt {
+    /// Generate signed partial decryption share
+    PartialDecryptSigned {
         /// Secret key share file
         #[arg(long)]
         secret_share: PathBuf,
@@ -169,9 +178,13 @@ enum Commands {
         #[arg(long)]
         commitment: PathBuf,
 
-        /// Transaction ciphertext file
+        /// Encrypted transaction file
         #[arg(long)]
-        ciphertext: PathBuf,
+        encrypted_tx: PathBuf,
+
+        /// Validator signing key file
+        #[arg(long)]
+        signing_key: PathBuf,
 
         /// Transaction index in batch
         #[arg(long)]
@@ -198,15 +211,15 @@ enum Commands {
         threshold: usize,
     },
 
-    /// Decrypt batch using partial decryptions
-    Decrypt {
+    /// Decrypt batch using signed partial decryptions
+    DecryptSigned {
         /// Batch file (JSON array)
         #[arg(long)]
         batch: PathBuf,
 
-        /// Partial decryptions file (JSON array)
+        /// Signed partial decryptions file (JSON array)
         #[arg(long)]
-        shares: PathBuf,
+        signed_shares: PathBuf,
 
         /// Threshold
         #[arg(long)]
@@ -224,7 +237,7 @@ enum Commands {
         #[arg(long)]
         commitment: PathBuf,
 
-        /// Evaluation proofs file
+        /// Eval proofs file
         #[arg(long)]
         eval_proofs: PathBuf,
 
@@ -306,6 +319,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let json = serde_json::to_string_pretty(&keypair)?;
                 println!("{}", json);
             }
+        }
+
+        Commands::KeygenSigning { output } => {
+            let signing_key = ValidatorSigningKey::new();
+            let bytes: [u8; 32] = (&signing_key).into();
+            let json = serde_json::to_string_pretty(&bytes.to_vec())?;
+            fs::write(&output, json)?;
+            println!("✓ Signing key written to {}", output.display());
         }
 
         Commands::AggregateKeys {
@@ -413,10 +434,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("✓ Commitment written to {}", output.display());
         }
 
-        Commands::PartialDecrypt {
+        Commands::PartialDecryptSigned {
             secret_share,
             commitment,
-            ciphertext,
+            encrypted_tx,
+            signing_key,
             tx_index,
             block_height,
             context_index,
@@ -424,7 +446,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             num_validators,
             threshold,
         } => {
-            println!("Generating partial decryption...");
+            println!("Generating signed partial decryption...");
             let mut rng = thread_rng();
             let client = TrxMinion::<Backend>::new(&mut rng, num_validators, threshold)?;
 
@@ -435,31 +457,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let comm_json = fs::read_to_string(&commitment)?;
             let comm: BatchCommitment<Backend> = serde_json::from_str(&comm_json)?;
 
-            let ct_json = fs::read_to_string(&ciphertext)?;
-            let ct: tess::Ciphertext<Backend> = serde_json::from_str(&ct_json)?;
+            let tx_json = fs::read_to_string(&encrypted_tx)?;
+            let tx: EncryptedTransaction<Backend> = serde_json::from_str(&tx_json)?;
+
+            let signing_key = read_signing_key(&signing_key)?;
 
             let context = DecryptionContext {
                 block_height,
                 context_index: context_index as u32,
             };
 
-            let pd = client
-                .validator()
-                .generate_partial_decryption(&secret, &comm, &context, tx_index, &ct)?;
+            let signed = client.validator().generate_signed_partial_decryption(
+                &signing_key,
+                &secret,
+                &comm,
+                &context,
+                tx_index,
+                &tx.ciphertext,
+                &tx.associated_data,
+            )?;
 
             if let Some(output_path) = output {
-                let json = serde_json::to_string_pretty(&pd)?;
+                let json = serde_json::to_string_pretty(&signed)?;
                 fs::write(&output_path, json)?;
-                println!("✓ Partial decryption written to {}", output_path.display());
+                println!("✓ Signed share written to {}", output_path.display());
             } else {
-                let json = serde_json::to_string_pretty(&pd)?;
+                let json = serde_json::to_string_pretty(&signed)?;
                 println!("{}", json);
             }
         }
 
-        Commands::Decrypt {
+        Commands::DecryptSigned {
             batch,
-            shares,
+            signed_shares,
             threshold,
             setup,
             public_key,
@@ -469,15 +499,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             context_index,
             num_validators,
         } => {
-            println!("Decrypting batch...");
+            println!("Decrypting batch with signed shares...");
             let mut rng = thread_rng();
             let client = TrxMinion::<Backend>::new(&mut rng, num_validators, threshold as usize)?;
 
             let batch_json = fs::read_to_string(&batch)?;
             let batch_txs: Vec<EncryptedTransaction<Backend>> = serde_json::from_str(&batch_json)?;
 
-            let shares_json = fs::read_to_string(&shares)?;
-            let partial_decryptions: Vec<PartialDecryption<Backend>> =
+            let shares_json = fs::read_to_string(&signed_shares)?;
+            let signed_partial_decryptions: Vec<SignedPartialDecryption<Backend>> =
                 serde_json::from_str(&shares_json)?;
 
             let setup_json = fs::read_to_string(&setup)?;
@@ -499,8 +529,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let batch_ctx = BatchContext::new(batch_txs, context, comm, proofs);
 
-            let results = client.decryption().combine_and_decrypt(
-                partial_decryptions,
+            let results = client.decryption().combine_and_decrypt_signed(
+                signed_partial_decryptions,
                 &batch_ctx,
                 threshold,
                 &epoch_setup,
@@ -528,6 +558,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+fn read_signing_key(path: &PathBuf) -> Result<ValidatorSigningKey, Box<dyn std::error::Error>> {
+    let key_json = fs::read_to_string(path)?;
+    let bytes: Vec<u8> = serde_json::from_str(&key_json)?;
+    let key = ValidatorSigningKey::try_from(bytes.as_slice())
+        .map_err(|err| format!("invalid signing key: {err}"))?;
+    Ok(key)
 }
 
 fn run_demo(
@@ -624,30 +662,30 @@ fn run_demo(
 
     // Phase 6: Decryption
     println!("Phase 6: Threshold Decryption");
-    let mut partial_decryptions = Vec::new();
+    let validator_signing_keys: Vec<_> = (0..num_validators)
+        .map(|_| ValidatorSigningKey::new())
+        .collect();
+    let mut signed_partial_decryptions = Vec::new();
     for (tx_index, tx) in batch.iter().enumerate() {
         for secret_share in validator_secret_shares.iter().take(threshold) {
-            let pd = client.validator().generate_partial_decryption(
+            let signing_key = &validator_signing_keys[secret_share.validator_id as usize];
+            let signed = client.validator().generate_signed_partial_decryption(
+                signing_key,
                 secret_share,
                 &commitment,
                 &context,
                 tx_index,
                 &tx.ciphertext,
+                &tx.associated_data,
             )?;
-            client.validator().verify_partial_decryption(
-                &pd,
-                &commitment,
-                &tx.ciphertext,
-                &epoch_keys.public_key,
-            )?;
-            partial_decryptions.push(pd);
+            signed_partial_decryptions.push(signed);
         }
     }
 
     let batch_ctx = BatchContext::new(batch, context, commitment, eval_proofs);
 
-    let results = client.decryption().combine_and_decrypt(
-        partial_decryptions,
+    let results = client.decryption().combine_and_decrypt_signed(
+        signed_partial_decryptions,
         &batch_ctx,
         threshold as u32,
         &setup,

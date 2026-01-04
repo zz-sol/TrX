@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+use tess::TargetGroup;
 use tess::{
     AggregateKey, Ciphertext as TessCiphertext, CurvePoint, DecryptionResult, Fr, PairingBackend,
     ThresholdEncryption,
@@ -33,6 +34,7 @@ pub trait BatchDecryption<B: PairingBackend<Scalar = Fr>> {
     ) -> Result<PartialDecryption<B>, TrxError>;
 
     /// Verifies a partial decryption share.
+    /// TODO: defer the pairing check when multiple shares are verified together.
     fn verify_partial_decryption(
         pd: &PartialDecryption<B>,
         commitment: &BatchCommitment<B>,
@@ -110,13 +112,12 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
             .find(|pk| pk.participant_id == validator_id)
             .ok_or_else(|| TrxError::InvalidInput("unknown validator id".into()))?;
 
-        // Check e(pk_i, gamma_g2) == e(g1, pd_i) using multi-pairing.
+        // Check e(pk_i, gamma_g2) == e(g1, pd_i) using a single multi-pairing.
         let g1 = B::G1::generator();
-        let left = B::multi_pairing(&[pk.bls_key], &[ciphertext.gamma_g2])
+        let neg_pd = pd.pd.negate();
+        let check = B::multi_pairing(&[pk.bls_key, g1], &[ciphertext.gamma_g2, neg_pd])
             .map_err(|err| TrxError::Backend(err.to_string()))?;
-        let right =
-            B::multi_pairing(&[g1], &[pd.pd]).map_err(|err| TrxError::Backend(err.to_string()))?;
-        if left != right {
+        if check != B::Target::identity() {
             return Err(TrxError::InvalidInput(
                 "invalid partial decryption share".into(),
             ));

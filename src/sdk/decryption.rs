@@ -29,14 +29,14 @@ use tess::{Fr, PairingBackend};
 /// let mut rng = thread_rng();
 /// let client = TrxMinion::<PairingEngine>::new(&mut rng, 5, 3)?;
 ///
-/// # let partial_decryptions = vec![];
+/// # let signed_partial_decryptions = vec![];
 /// # let batch_ctx = todo!();
 /// # let setup = Arc::new(todo!());
 /// # let agg_key = todo!();
 ///
-/// // Combine threshold partial decryptions
-/// let results = client.decryption().combine_and_decrypt(
-///     partial_decryptions,
+/// // Combine signed, commitment-bound shares
+/// let results = client.decryption().combine_and_decrypt_signed(
+///     signed_partial_decryptions,
 ///     batch_ctx,
 ///     3,  // threshold
 ///     &setup,
@@ -98,70 +98,8 @@ where
     ///
     /// Returns `TrxError::Backend` if cryptographic operations fail.
     ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use trx::TrxMinion;
-    /// use tess::PairingEngine;
-    /// use trx::{BatchContext, DecryptionContext};
-    /// use rand::thread_rng;
-    /// use std::sync::Arc;
-    ///
-    /// let mut rng = thread_rng();
-    /// let client = TrxMinion::<PairingEngine>::new(&mut rng, 5, 3)?;
-    ///
-    /// # let setup = Arc::new(todo!());
-    /// # let batch = vec![];
-    /// # let commitment = todo!();
-    /// # let eval_proofs = vec![];
-    /// # let epoch_key = todo!();
-    ///
-    /// let context = DecryptionContext {
-    ///     block_height: 100,
-    ///     context_index: 0,
-    /// };
-    ///
-    /// let batch_ctx = BatchContext::new(batch, context, commitment, eval_proofs);
-    ///
-    /// // Collect partial decryptions from validators
-    /// let mut partial_decryptions = vec![];
-    ///
-    /// # let validator_secret_shares = vec![];
-    /// // For each transaction, collect threshold shares
-    /// for (tx_index, tx) in batch_ctx.transactions.iter().enumerate() {
-    ///     // Get shares from first threshold validators
-    ///     for share in validator_secret_shares.iter().take(3) {  // threshold = 3
-    ///         let pd = client.validator().generate_partial_decryption(
-    ///             share,
-    ///             &batch_ctx.commitment,
-    ///             &batch_ctx.context,
-    ///             tx_index,
-    ///             &tx.ciphertext,
-    ///         )?;
-    ///         partial_decryptions.push(pd);
-    ///     }
-    /// }
-    ///
-    /// // Combine and decrypt
-    /// let results = client.decryption().combine_and_decrypt(
-    ///     partial_decryptions,
-    ///     &batch_ctx,
-    ///     3,
-    ///     &setup,
-    ///     &epoch_key,
-    /// )?;
-    ///
-    /// // Process decrypted transactions
-    /// for (i, result) in results.iter().enumerate() {
-    ///     if let Some(plaintext) = &result.plaintext {
-    ///         println!("Transaction {}: {:?}", i, String::from_utf8_lossy(plaintext));
-    ///     } else {
-    ///         println!("Transaction {} decryption failed", i);
-    ///     }
-    /// }
-    /// # Ok::<(), trx::TrxError>(())
-    /// ```
-    pub fn combine_and_decrypt(
+    /// This is an internal helper for unsigned shares.
+    pub(crate) fn combine_and_decrypt(
         &self,
         partial_decryptions: Vec<PartialDecryption<B>>,
         batch_ctx: &BatchContext<B>,

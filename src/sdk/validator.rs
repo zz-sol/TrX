@@ -5,7 +5,7 @@
 
 use crate::{
     sign_validator_share_bound, validator_verify_key, BatchCommitment, BatchDecryption,
-    DecryptionContext, PartialDecryption, SignedPartialDecryption, ThresholdEncryptionPublicKey,
+    DecryptionContext, PartialDecryption, SignedPartialDecryption,
     ThresholdEncryptionSecretKeyShare, TrxCrypto, TrxError, ValidatorKeyPair, ValidatorSigningKey,
 };
 use tess::{Ciphertext as TessCiphertext, Fr, PairingBackend};
@@ -119,38 +119,8 @@ impl<'a, B: PairingBackend<Scalar = Fr>> ValidatorPhase<'a, B> {
     ///
     /// Returns `TrxError::Backend` if partial decryption computation fails.
     ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use trx::TrxMinion;
-    /// use tess::PairingEngine;
-    /// use trx::DecryptionContext;
-    /// use rand::thread_rng;
-    ///
-    /// let mut rng = thread_rng();
-    /// let client = TrxMinion::<PairingEngine>::new(&mut rng, 5, 3)?;
-    ///
-    /// # let secret_share = todo!();
-    /// # let commitment = todo!();
-    /// # let ciphertext = todo!();
-    /// let context = DecryptionContext {
-    ///     block_height: 100,
-    ///     context_index: 0,
-    /// };
-    ///
-    /// // Validator generates partial decryption for tx 0 in the batch
-    /// let partial_decryption = client.validator().generate_partial_decryption(
-    ///     &secret_share,
-    ///     &commitment,
-    ///     &context,
-    ///     0,  // tx_index
-    ///     &ciphertext,
-    /// )?;
-    ///
-    /// // Broadcast partial_decryption to other validators
-    /// # Ok::<(), trx::TrxError>(())
-    /// ```
-    pub fn generate_partial_decryption(
+    /// Internal helper for unsigned shares.
+    pub(crate) fn generate_partial_decryption(
         &self,
         secret_share: &ThresholdEncryptionSecretKeyShare<B>,
         commitment: &BatchCommitment<B>,
@@ -200,63 +170,5 @@ impl<'a, B: PairingBackend<Scalar = Fr>> ValidatorPhase<'a, B> {
         })
     }
 
-    /// Verify a partial decryption from another validator.
-    ///
-    /// This checks that the partial decryption was correctly computed
-    /// using the validator's public key and the batch commitment.
-    ///
-    /// # Arguments
-    ///
-    /// * `partial_decryption` - The partial decryption to verify
-    /// * `commitment` - The batch commitment
-    /// * `ciphertext` - Ciphertext corresponding to the share
-    /// * `agg_key` - Aggregate public key containing validator public keys
-    ///
-    /// # Errors
-    ///
-    /// Returns `TrxError::InvalidInput` if:
-    /// - The validator ID is not in the aggregate key
-    /// - The cryptographic verification fails
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use trx::TrxMinion;
-    /// use tess::PairingEngine;
-    /// use rand::thread_rng;
-    ///
-    /// let mut rng = thread_rng();
-    /// let client = TrxMinion::<PairingEngine>::new(&mut rng, 5, 3)?;
-    ///
-    /// # let partial_decryption = todo!();
-    /// # let commitment = todo!();
-    /// # let ciphertext = todo!();
-    /// # let agg_key = todo!();
-    ///
-    /// // Verify partial decryption from validator before accepting
-    /// match client.validator().verify_partial_decryption(
-    ///     &partial_decryption,
-    ///     &commitment,
-    ///     &ciphertext,
-    ///     &agg_key,
-    /// ) {
-    ///     Ok(_) => println!("Valid partial decryption"),
-    ///     Err(e) => println!("Invalid partial decryption: {}", e),
-    /// }
-    /// # Ok::<(), trx::TrxError>(())
-    /// ```
-    pub fn verify_partial_decryption(
-        &self,
-        partial_decryption: &PartialDecryption<B>,
-        commitment: &BatchCommitment<B>,
-        ciphertext: &TessCiphertext<B>,
-        agg_key: &ThresholdEncryptionPublicKey<B>,
-    ) -> Result<(), TrxError> {
-        TrxCrypto::<B>::verify_partial_decryption(
-            partial_decryption,
-            commitment,
-            ciphertext,
-            &agg_key.agg_key,
-        )
-    }
+    // Note: unsigned share verification is no longer exposed in the SDK.
 }

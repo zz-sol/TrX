@@ -174,6 +174,67 @@ fn happy_path_encrypt_decrypt_signed_shares() {
 }
 
 #[test]
+fn signed_share_rejects_commitment_mismatch() {
+    let mut rng = thread_rng();
+    let parties = 4;
+    let threshold = 2;
+    let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
+    let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
+    let setup = generate_epoch_setup(&trx, &mut rng, parties, 2);
+    let (epoch, validator_shares) =
+        generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup.clone()).unwrap();
+
+    let encrypted = trx
+        .encrypt_transaction(&epoch.public_key, b"payload", b"aad", &client_key)
+        .unwrap();
+    let batch = vec![encrypted];
+    let context = DecryptionContext {
+        block_height: 1,
+        context_index: 0,
+    };
+    let commitment = TrxCrypto::<PairingEngine>::compute_digest(&batch, &context, &setup).unwrap();
+    let eval_proofs =
+        TrxCrypto::<PairingEngine>::compute_eval_proofs(&batch, &context, &setup).unwrap();
+
+    let minion = TrxMinion::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
+    let mut signed_partials = Vec::new();
+    for validator_id in [0u32, 1u32] {
+        let share = &validator_shares[validator_id as usize];
+        let signing_key = ValidatorSigningKey::new();
+        let signed = minion
+            .validator()
+            .generate_signed_partial_decryption(
+                &signing_key,
+                share,
+                &commitment,
+                &context,
+                0,
+                &batch[0].ciphertext,
+                &batch[0].associated_data,
+            )
+            .unwrap();
+        signed_partials.push(signed);
+    }
+
+    let mut bad_commitment = commitment.clone();
+    let g1 = <PairingEngine as tess::PairingBackend>::G1::generator();
+    bad_commitment.com = bad_commitment.com.add(&g1);
+    let bad_ctx = BatchContext::new(batch.clone(), context, bad_commitment, eval_proofs.clone());
+
+    let err = minion
+        .decryption()
+        .combine_and_decrypt_signed(
+            signed_partials,
+            &bad_ctx,
+            threshold as u32,
+            &setup,
+            &epoch.public_key,
+        )
+        .unwrap_err();
+    assert!(matches!(err, TrxError::InvalidInput(_)));
+}
+
+#[test]
 fn batch_decrypt_flow() {
     let mut rng = thread_rng();
     let parties = 4;

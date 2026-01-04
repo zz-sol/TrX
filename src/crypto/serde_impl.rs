@@ -4,8 +4,11 @@ use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::sync::{atomic::AtomicBool, Arc};
 use tess::{CurvePoint, Fr, PairingBackend, SRS};
 
-use super::{EpochKeys, EpochSetup, GlobalSetup, KappaSetup, ValidatorKeyPair};
+use super::{
+    EpochKeys, EpochSetup, GlobalSetup, KappaSetup, SignedPartialDecryption, ValidatorKeyPair,
+};
 use crate::core::types::{ThresholdEncryptionPublicKey, ThresholdEncryptionSecretKeyShare};
+use solana_bls_signatures::{PubkeyCompressed, SignatureCompressed};
 
 // GlobalSetup
 impl<B: PairingBackend<Scalar = Fr>> Serialize for GlobalSetup<B> {
@@ -205,6 +208,53 @@ impl<'de, B: PairingBackend<Scalar = Fr>> Deserialize<'de> for ValidatorKeyPair<
             validator_id: helper.validator_id,
             public_key: helper.public_key,
             secret_share: helper.secret_share,
+        })
+    }
+}
+
+// SignedPartialDecryption
+impl<B: PairingBackend> Serialize for SignedPartialDecryption<B> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("SignedPartialDecryption", 3)?;
+        state.serialize_field("share", &self.share)?;
+        state.serialize_field("signature", &self.signature.0.to_vec())?;
+        state.serialize_field("validator_vk", &self.validator_vk.0.to_vec())?;
+        state.end()
+    }
+}
+
+impl<'de, B: PairingBackend> Deserialize<'de> for SignedPartialDecryption<B> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(bound(deserialize = ""))]
+        struct Helper<B: PairingBackend> {
+            share: crate::PartialDecryption<B>,
+            signature: Vec<u8>,
+            validator_vk: Vec<u8>,
+        }
+
+        let helper: Helper<B> = Helper::deserialize(deserializer)?;
+        let signature: [u8; 96] = helper
+            .signature
+            .as_slice()
+            .try_into()
+            .map_err(|_| de::Error::custom("signature must be 96 bytes"))?;
+        let validator_vk: [u8; 48] = helper
+            .validator_vk
+            .as_slice()
+            .try_into()
+            .map_err(|_| de::Error::custom("validator_vk must be 48 bytes"))?;
+        Ok(SignedPartialDecryption {
+            share: helper.share,
+            signature: SignatureCompressed(signature),
+            validator_vk: PubkeyCompressed(validator_vk),
         })
     }
 }
