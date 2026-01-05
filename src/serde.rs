@@ -1,11 +1,58 @@
 //! Serialization and deserialization for all TrX types.
 //!
-//! This module provides JSON serialization support via `serde` for all protocol types:
-//! - Core types: transactions, commitments, proofs, keys, contexts
-//! - Crypto types: setups, epoch keys, validator keypairs
+//! This module provides comprehensive JSON serialization support via `serde` for all TrX
+//! protocol types, enabling persistent storage, network transmission, and integration
+//! with JSON-based APIs.
 //!
-//! All cryptographic types (field elements, curve points) are serialized as byte arrays
-//! to ensure portability across different curve implementations.
+//! # Supported Types
+//!
+//! ## Core Protocol Types
+//! - [`EncryptedTransaction`]: Client-encrypted transactions with Ed25519 signatures
+//! - [`BatchCommitment`]: KZG polynomial commitments over transaction batches
+//! - [`EvalProof`]: KZG evaluation proofs for batch integrity verification
+//! - [`PartialDecryption`]: Validator decryption shares
+//! - [`DecryptionContext`]: Context binding (block height, context index)
+//! - [`BatchProofs`]: Combined commitment and evaluation proofs
+//!
+//! ## Cryptographic Setup Types
+//! - [`GlobalSetup`]: SRS and batch commitment parameters
+//! - [`EpochSetup`]: Per-epoch cryptographic parameters
+//! - [`EpochKeys`]: Aggregated threshold public key for an epoch
+//! - [`ValidatorKeyPair`]: Individual validator's key pair
+//! - [`ThresholdEncryptionPublicKey`]: Threshold encryption public key
+//! - [`ThresholdEncryptionSecretKeyShare`]: Secret key share for threshold decryption
+//!
+//! # Serialization Strategy
+//!
+//! All cryptographic primitives (field elements, curve points, pairings) are serialized
+//! as **byte arrays** to ensure:
+//! - **Portability**: Independent of specific curve implementations
+//! - **Compatibility**: Works across different BLS12-381 libraries
+//! - **Determinism**: Consistent serialization format
+//!
+//! # Example Usage
+//!
+//! ```rust,ignore
+//! use trx::{EncryptedTransaction, TrxCrypto};
+//! use tess::PairingEngine;
+//! use ed25519_dalek::SigningKey;
+//!
+//! // ... create encrypted transaction ...
+//!
+//! // Serialize to JSON
+//! let json = serde_json::to_string_pretty(&encrypted)?;
+//!
+//! // Deserialize from JSON
+//! let tx: EncryptedTransaction<PairingEngine> = serde_json::from_str(&json)?;
+//! ```
+//!
+//! # Implementation Notes
+//!
+//! - Field elements: 32-byte arrays (little-endian)
+//! - G1 points: 48-byte compressed representations
+//! - G2 points: 96-byte compressed representations
+//! - BLS signatures: compressed format (48 bytes for G1, 96 bytes for G2)
+//! - Atomic booleans in setups: serialized as regular booleans
 
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use solana_bls_signatures::{PubkeyCompressed, SignatureCompressed};
@@ -17,7 +64,7 @@ use crate::core::types::{
     BatchCommitment, BatchProofs, DecryptionContext, EncryptedTransaction, EvalProof,
     PartialDecryption, ThresholdEncryptionPublicKey, ThresholdEncryptionSecretKeyShare,
 };
-use crate::crypto::{EpochKeys, EpochSetup, GlobalSetup, KappaSetup, ValidatorKeyPair};
+use crate::crypto::tess::{EpochKeys, EpochSetup, GlobalSetup, KappaSetup, ValidatorKeyPair};
 
 // ============================================================================
 // Helper Functions - Shared utilities for serializing cryptographic primitives
@@ -426,7 +473,7 @@ impl<B: PairingBackend> Serialize for KappaSetup<B> {
             &self
                 .elements
                 .iter()
-                .map(|p| curve_point_to_bytes::<B::Scalar, _>(p))
+                .map(curve_point_to_bytes::<B::Scalar, _>)
                 .collect::<Vec<Vec<u8>>>(),
         )?;
         state.serialize_field("used", &self.is_used())?;

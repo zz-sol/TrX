@@ -15,7 +15,7 @@ use crate::core::types::{
     PartialDecryption, ThresholdEncryptionPublicKey, ThresholdEncryptionSecretKeyShare,
 };
 use crate::crypto::signatures::ValidatorSigningKey;
-use crate::crypto::{EpochSetup, ValidatorKeyPair};
+use crate::crypto::tess::{EpochSetup, ValidatorKeyPair};
 use crate::sdk::TrxMinion;
 
 use super::commands::Commands;

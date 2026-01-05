@@ -1,148 +1,55 @@
-use ed25519_dalek::SigningKey;
-use rand::thread_rng;
-use std::sync::Arc;
-use tess::{CurvePoint, PairingEngine};
+mod common;
 
+use rand::thread_rng;
+use tess::{CurvePoint, PairingEngine};
 use trx::*;
 
-/// Helper function to generate epoch keys using the new silent setup API
-/// Returns (EpochKeys, HashMap of validator shares)
-///
-/// NOTE: This simulates the silent setup flow where in a real deployment:
-/// 1. Each validator independently samples their own BLS secret key
-/// 2. Each validator publishes their public key
-/// 3. The coordinator aggregates all public keys deterministically
-///
-/// Due to Tess API limitations, we generate all keys at once then distribute them,
-/// but this achieves the same end result as true silent setup.
-fn generate_epoch_keys(
-    trx: &TrxCrypto<PairingEngine>,
-    rng: &mut impl rand::RngCore,
-    parties: usize,
-    threshold: u32,
-    setup: Arc<EpochSetup<PairingEngine>>,
-) -> Result<
-    (
-        EpochKeys<PairingEngine>,
-        Vec<ThresholdEncryptionSecretKeyShare<PairingEngine>>,
-    ),
-    TrxError,
-> {
-    let validators: Vec<ValidatorId> = (0..parties as u32).collect();
-
-    // Generate all validator key pairs (simulates silent setup where each validator
-    // independently generates their own key, then publishes their public key)
-
-    let validator_keypairs = validators
-        .iter()
-        .map(|&vid| trx.keygen_single_validator(rng, vid))
-        .collect::<Result<Vec<_>, _>>()?;
-    let validator_secret_keys = validator_keypairs
-        .iter()
-        .map(|kp| kp.secret_share.clone())
-        .collect::<Vec<_>>();
-
-    // Phase 2: Aggregate the published public keys (non-interactive)
-    // Only public keys are needed for aggregation
-    let public_keys: Vec<_> = validator_keypairs
-        .iter()
-        .map(|kp| kp.public_key.clone())
-        .collect();
-    let epoch_keys = trx.aggregate_epoch_keys(&public_keys, threshold, setup)?;
-
-    Ok((epoch_keys, validator_secret_keys))
-}
-
-fn generate_epoch_setup(
-    trx: &TrxCrypto<PairingEngine>,
-    rng: &mut impl rand::RngCore,
-    max_batch_size: usize,
-    max_contexts: usize,
-) -> Arc<EpochSetup<PairingEngine>> {
-    let global_setup = trx
-        .generate_global_setup(rng, max_batch_size)
-        .expect("global setup generation failed");
-    trx.generate_epoch_setup(rng, 1, max_contexts, global_setup)
-        .expect("epoch setup generation failed")
-}
+use common::*;
 
 #[test]
 fn happy_path_encrypt_decrypt() {
-    let mut rng = thread_rng();
-    let parties = 4;
-    let threshold = 2;
-    let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
-    let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
-    let setup = generate_epoch_setup(&trx, &mut rng, parties, 2);
-    let (epoch, validator_shares) =
-        generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup.clone()).unwrap();
+    let fixture = TrxTestFixture::new();
 
-    let encrypted = trx
-        .encrypt_transaction(&epoch.public_key, b"payload", b"aad", &client_key)
-        .unwrap();
+    let encrypted = fixture.encrypt(b"payload", b"aad");
     let batch = vec![encrypted];
-    let context = DecryptionContext {
-        block_height: 1,
-        context_index: 0,
-    };
-    let commitment = TrxCrypto::<PairingEngine>::compute_digest(&batch, &context, &setup).unwrap();
-    let eval_proofs =
-        TrxCrypto::<PairingEngine>::compute_eval_proofs(&batch, &context, &setup).unwrap();
+    let context = TrxTestFixture::default_context();
+    let commitment = fixture.compute_commitment(&batch, &context);
+    let eval_proofs = fixture.compute_proofs(&batch, &context);
 
-    let mut partials = Vec::new();
-    for validator_id in [0u32, 1u32] {
-        let share = &validator_shares[validator_id as usize];
-        let pd = TrxCrypto::<PairingEngine>::generate_partial_decryption(
-            share,
-            &commitment,
-            &context,
-            0,
-            &batch[0].ciphertext,
-        )
-        .unwrap();
-        partials.push(pd);
-    }
+    let partials =
+        fixture.generate_partial_decryptions(&commitment, &context, 0, &batch[0].ciphertext);
 
-    let batch_ctx = BatchContext::new(batch, context, BatchProofs::new(commitment, eval_proofs));
-    let results = trx
+    let batch_ctx = create_batch_context(batch, context, commitment, eval_proofs);
+    let results = fixture
+        .trx
         .combine_and_decrypt(
             partials,
             &batch_ctx,
-            threshold as u32,
-            &setup,
-            &epoch.public_key.agg_key,
+            fixture.threshold,
+            &fixture.epoch_setup,
+            &fixture.epoch_keys.public_key.agg_key,
         )
         .unwrap();
-    assert_eq!(results[0].plaintext.as_ref().unwrap(), b"payload");
+    assert_decrypted_eq(&results[0], b"payload");
 }
 
 #[test]
 fn happy_path_encrypt_decrypt_signed_shares() {
     let mut rng = thread_rng();
-    let parties = 4;
-    let threshold = 2;
-    let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
-    let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
-    let setup = generate_epoch_setup(&trx, &mut rng, parties, 2);
-    let (epoch, validator_shares) =
-        generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup.clone()).unwrap();
+    let fixture = TrxTestFixture::new();
 
-    let encrypted = trx
-        .encrypt_transaction(&epoch.public_key, b"payload", b"aad", &client_key)
-        .unwrap();
+    let encrypted = fixture.encrypt(b"payload", b"aad");
     let batch = vec![encrypted];
-    let context = DecryptionContext {
-        block_height: 1,
-        context_index: 0,
-    };
-    let commitment = TrxCrypto::<PairingEngine>::compute_digest(&batch, &context, &setup).unwrap();
-    let eval_proofs =
-        TrxCrypto::<PairingEngine>::compute_eval_proofs(&batch, &context, &setup).unwrap();
+    let context = TrxTestFixture::default_context();
+    let commitment = fixture.compute_commitment(&batch, &context);
+    let eval_proofs = fixture.compute_proofs(&batch, &context);
 
-    let minion = TrxMinion::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
+    let minion =
+        TrxMinion::<PairingEngine>::new(&mut rng, fixture.parties, fixture.threshold as usize)
+            .unwrap();
     let mut signed_partials = Vec::new();
-    for validator_id in [0u32, 1u32] {
-        let share = &validator_shares[validator_id as usize];
+    for validator_id in 0..fixture.threshold {
+        let share = &fixture.validator_shares[validator_id as usize];
         let signing_key = ValidatorSigningKey::new();
         let signed = minion
             .validator()
@@ -159,47 +66,37 @@ fn happy_path_encrypt_decrypt_signed_shares() {
         signed_partials.push(signed);
     }
 
-    let batch_ctx = BatchContext::new(batch, context, BatchProofs::new(commitment, eval_proofs));
+    let batch_ctx = create_batch_context(batch, context, commitment, eval_proofs);
     let results = minion
         .decryption()
         .combine_and_decrypt_signed(
             signed_partials,
             &batch_ctx,
-            threshold as u32,
-            &setup,
-            &epoch.public_key,
+            fixture.threshold,
+            &fixture.epoch_setup,
+            &fixture.epoch_keys.public_key,
         )
         .unwrap();
-    assert_eq!(results[0].plaintext.as_ref().unwrap(), b"payload");
+    assert_decrypted_eq(&results[0], b"payload");
 }
 
 #[test]
 fn signed_share_rejects_commitment_mismatch() {
     let mut rng = thread_rng();
-    let parties = 4;
-    let threshold = 2;
-    let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
-    let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
-    let setup = generate_epoch_setup(&trx, &mut rng, parties, 2);
-    let (epoch, validator_shares) =
-        generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup.clone()).unwrap();
+    let fixture = TrxTestFixture::new();
 
-    let encrypted = trx
-        .encrypt_transaction(&epoch.public_key, b"payload", b"aad", &client_key)
-        .unwrap();
+    let encrypted = fixture.encrypt(b"payload", b"aad");
     let batch = vec![encrypted];
-    let context = DecryptionContext {
-        block_height: 1,
-        context_index: 0,
-    };
-    let commitment = TrxCrypto::<PairingEngine>::compute_digest(&batch, &context, &setup).unwrap();
-    let eval_proofs =
-        TrxCrypto::<PairingEngine>::compute_eval_proofs(&batch, &context, &setup).unwrap();
+    let context = TrxTestFixture::default_context();
+    let commitment = fixture.compute_commitment(&batch, &context);
+    let eval_proofs = fixture.compute_proofs(&batch, &context);
 
-    let minion = TrxMinion::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
+    let minion =
+        TrxMinion::<PairingEngine>::new(&mut rng, fixture.parties, fixture.threshold as usize)
+            .unwrap();
     let mut signed_partials = Vec::new();
-    for validator_id in [0u32, 1u32] {
-        let share = &validator_shares[validator_id as usize];
+    for validator_id in 0..fixture.threshold {
+        let share = &fixture.validator_shares[validator_id as usize];
         let signing_key = ValidatorSigningKey::new();
         let signed = minion
             .validator()
@@ -230,9 +127,9 @@ fn signed_share_rejects_commitment_mismatch() {
         .combine_and_decrypt_signed(
             signed_partials,
             &bad_ctx,
-            threshold as u32,
-            &setup,
-            &epoch.public_key,
+            fixture.threshold,
+            &fixture.epoch_setup,
+            &fixture.epoch_keys.public_key,
         )
         .unwrap_err();
     assert!(matches!(err, TrxError::InvalidInput(_)));
@@ -240,35 +137,18 @@ fn signed_share_rejects_commitment_mismatch() {
 
 #[test]
 fn batch_decrypt_flow() {
-    let mut rng = thread_rng();
-    let parties = 4;
-    let threshold = 2;
-    let trx = TrxCrypto::<PairingEngine>::new(&mut rng, parties, threshold).unwrap();
-    let client_key = SigningKey::generate(&mut rand::rngs::OsRng);
-    let setup = generate_epoch_setup(&trx, &mut rng, parties, 2);
-    let (epoch, validator_shares) =
-        generate_epoch_keys(&trx, &mut rng, parties, threshold as u32, setup.clone()).unwrap();
+    let fixture = TrxTestFixture::new();
+    let context = TrxTestFixture::default_context();
 
-    let context = DecryptionContext {
-        block_height: 1,
-        context_index: 0,
-    };
+    let batch = vec![fixture.encrypt(b"a", b""), fixture.encrypt(b"b", b"")];
 
-    let batch = vec![
-        trx.encrypt_transaction(&epoch.public_key, b"a", b"", &client_key)
-            .unwrap(),
-        trx.encrypt_transaction(&epoch.public_key, b"b", b"", &client_key)
-            .unwrap(),
-    ];
-
-    let commitment = TrxCrypto::<PairingEngine>::compute_digest(&batch, &context, &setup).unwrap();
-    let eval_proofs =
-        TrxCrypto::<PairingEngine>::compute_eval_proofs(&batch, &context, &setup).unwrap();
+    let commitment = fixture.compute_commitment(&batch, &context);
+    let eval_proofs = fixture.compute_proofs(&batch, &context);
 
     let mut partials = Vec::new();
     for (tx_index, tx) in batch.iter().enumerate() {
-        for validator_id in [0u32, 1u32] {
-            let share = &validator_shares[validator_id as usize];
+        for validator_id in 0..fixture.threshold {
+            let share = &fixture.validator_shares[validator_id as usize];
             let pd = TrxCrypto::<PairingEngine>::generate_partial_decryption(
                 share,
                 &commitment,
@@ -281,19 +161,20 @@ fn batch_decrypt_flow() {
         }
     }
 
-    let batch_ctx = BatchContext::new(batch, context, BatchProofs::new(commitment, eval_proofs));
-    let results = trx
+    let batch_ctx = create_batch_context(batch, context, commitment, eval_proofs);
+    let results = fixture
+        .trx
         .combine_and_decrypt(
             partials,
             &batch_ctx,
-            threshold as u32,
-            &setup,
-            &epoch.public_key.agg_key,
+            fixture.threshold,
+            &fixture.epoch_setup,
+            &fixture.epoch_keys.public_key.agg_key,
         )
         .unwrap();
     assert_eq!(results.len(), 2);
-    assert_eq!(results[0].plaintext.as_ref().unwrap(), b"a");
-    assert_eq!(results[1].plaintext.as_ref().unwrap(), b"b");
+    assert_decrypted_eq(&results[0], b"a");
+    assert_decrypted_eq(&results[1], b"b");
 }
 
 #[test]

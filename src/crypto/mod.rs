@@ -1,45 +1,30 @@
 //! Cryptographic primitives and protocol implementations.
 //!
-//! This module contains all cryptographic components of TrX, including threshold
-//! encryption adapters, KZG commitments, signature schemes, and performance
-//! optimizations.
+//! This module contains all cryptographic components of TrX, organized by primitive type:
 //!
 //! # Submodules
 //!
-//! - [`engine`]: Cryptographic engine configuration and key generation helpers
-//! - [`setup`]: Setup types and key aggregation logic
-//! - [`encryption`]: Client-side transaction encryption and verification
-//! - [`decryption`]: Batch decryption operations for consensus processing
-//! - [`kzg`]: KZG polynomial commitments and evaluation proofs
-//! - [`signatures`]: Ed25519 (client) and BLS (validator) signature helpers
-//! - [`pre_computation`]: Caching layer for expensive KZG operations
+//! - [`tess`]: Threshold encryption adapters (engine, setup, encryption, decryption)
+//! - [`kzg`]: KZG polynomial commitments and precomputation
+//! - [`signatures`]: Ed25519 (client) and BLS (validator) signatures
 //!
 //! # Cryptographic Stack
 //!
 //! ```text
 //! TrX Crypto Layer
-//! ├── Threshold Encryption (Tess)
+//! ├── Threshold Encryption (tess/)
 //! │   ├── Silent setup protocol (non-interactive key generation)
 //! │   ├── Non-interactive public key aggregation
 //! │   └── Threshold decryption
-//! ├── KZG Commitments
+//! ├── KZG Commitments (kzg/)
 //! │   ├── Batch polynomial commitment
 //! │   ├── Evaluation proof generation
 //! │   └── Proof verification (pairing check)
-//! └── Signatures
+//! └── Signatures (signatures/)
 //!     ├── Ed25519 (client transaction authenticity)
 //!     └── BLS (validator consensus messages)
 //! ```
 
-pub mod decryption;
-pub mod encryption;
-pub mod engine;
 pub mod kzg;
-pub mod pre_computation;
-pub mod setup;
 pub mod signatures;
-
-pub use decryption::BatchDecryption;
-pub use encryption::TransactionEncryption;
-pub use engine::TrxCrypto;
-pub use setup::{EpochKeys, EpochSetup, GlobalSetup, KappaSetup, SetupManager, ValidatorKeyPair};
+pub mod tess;

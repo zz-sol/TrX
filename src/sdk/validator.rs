@@ -140,6 +140,7 @@ impl<'a, B: PairingBackend<Scalar = Fr>> ValidatorPhase<'a, B> {
     /// Generate a signed partial decryption bound to batch commitment and context.
     ///
     /// The signature covers commitment hash, context, tx index, and ciphertext hash.
+    #[allow(clippy::too_many_arguments)]
     pub fn generate_signed_partial_decryption(
         &self,
         signing_key: &ValidatorSigningKey,

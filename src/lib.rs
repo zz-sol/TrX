@@ -61,7 +61,7 @@
 //!
 //! # SDK Usage (Recommended)
 //!
-//! The [`sdk`] module provides a high-level, phase-based API for building encrypted
+//! The [`TrxMinion`] helper provides a high-level, phase-based API for building encrypted
 //! mempool systems:
 //!
 //! ```rust,no_run
@@ -218,11 +218,19 @@
 //!
 //! # Module Organization
 //!
-//! - `core`: Protocol types and errors
-//! - `crypto`: Tess/KZG/BLS/Ed25519 adapters
-//! - `sdk`: High-level phase-based API
-//! - `mempool`: Encrypted transaction mempool
-//! - `network`: Network message types
+//! - **core**: Protocol types and errors
+//!   - `core::types`: Core data structures (transactions, commitments, proofs, contexts)
+//!   - `core::errors`: Error types and handling
+//! - **crypto**: Cryptographic primitives and protocol implementations
+//!   - `crypto::tess`: Tess threshold encryption adapters (engine, setup, encryption, decryption)
+//!   - `crypto::kzg`: KZG polynomial commitments (batch commitments, evaluation proofs, precomputation)
+//!   - `crypto::signatures`: Signature schemes (Ed25519 for clients, BLS for validators)
+//! - **serde**: JSON serialization for all protocol types
+//! - **sdk**: High-level phase-based API (see [`TrxMinion`])
+//! - **mempool**: Encrypted transaction mempool (see [`EncryptedMempool`])
+//! - **network**: Network protocol message types (see [`TrxMessage`])
+//! - **cli**: Command-line interface (see [`cli::run()`])
+//! - **utils**: Utility functions (hash-to-scalar conversion)
 //!
 //! # References
 //!
@@ -247,9 +255,8 @@ pub use core::types::{
     EncryptedTransaction, EvalProof, PartialDecryption, ThresholdEncryptionPublicKey,
     ThresholdEncryptionSecretKeyShare, ValidatorId,
 };
-pub use crypto::kzg::verify_eval_proofs;
-pub use crypto::pre_computation::PrecomputationEngine;
-pub use crypto::{
+pub use crypto::kzg::{verify_eval_proofs, PrecomputationEngine};
+pub use crypto::tess::{
     BatchDecryption, EpochKeys, EpochSetup, GlobalSetup, SetupManager, TransactionEncryption,
     TrxCrypto, ValidatorKeyPair,
 };

@@ -128,7 +128,7 @@ impl<B: PairingBackend<Scalar = Fr>> PrecomputationEngine<B> {
     ///
     /// # Returns
     ///
-    /// [`PrecomputedData`] containing:
+    /// Precomputed data containing:
     /// - `digest`: Batch commitment
     /// - `eval_proofs`: Evaluation proofs for all transactions
     /// - `computation_time`: Time spent (zero if cache hit)
