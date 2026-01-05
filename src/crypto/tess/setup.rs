@@ -47,11 +47,6 @@ pub struct EpochSetup<B: PairingBackend<Scalar = Fr>> {
 
 impl<B: PairingBackend<Scalar = Fr>> EpochSetup<B> {
     /// Validates that a context index is within bounds.
-    #[instrument(
-        level = "info",
-        skip_all,
-        fields(context_index, max_contexts = self.kappa_setups.len())
-    )]
     pub fn validate_context_index(&self, context_index: u32) -> Result<(), TrxError> {
         if context_index as usize >= self.kappa_setups.len() {
             let max_msg = if self.kappa_setups.is_empty() {
@@ -247,7 +242,7 @@ impl<B: PairingBackend<Scalar = Fr>> SetupManager<B> for TrxCrypto<B> {
         }))
     }
 
-    #[instrument(level = "info", skip_all)]
+    // todo: check the params correctness via pairing checks
     fn verify_global_setup(&self, setup: &GlobalSetup<B>) -> Result<(), TrxError> {
         if setup.srs.powers_of_g.is_empty() || setup.srs.powers_of_h.is_empty() {
             return Err(TrxError::InvalidInput("global setup missing powers".into()));
@@ -260,11 +255,6 @@ impl<B: PairingBackend<Scalar = Fr>> SetupManager<B> for TrxCrypto<B> {
         Ok(())
     }
 
-    #[instrument(
-        level = "info",
-        skip_all,
-        fields(kappa_len = setup.kappa_setups.len())
-    )]
     fn verify_epoch_setup(&self, setup: &EpochSetup<B>) -> Result<(), TrxError> {
         self.verify_global_setup(&setup.global_setup)?;
         if setup.kappa_setups.is_empty() {

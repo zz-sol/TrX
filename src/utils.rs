@@ -1,7 +1,7 @@
 use blake3::Hasher;
 use tess::{Ciphertext as TessCiphertext, CurvePoint, FieldElement, Fr, PairingBackend};
 
-use crate::{BatchCommitment, DecryptionContext};
+use crate::{DecryptionContext, TransactionBatchCommitment};
 
 /// Maximum attempts for rejection sampling to prevent infinite loops.
 const MAX_REJECTION_SAMPLING_ATTEMPTS: u64 = 1000;
@@ -81,7 +81,7 @@ pub(crate) fn hash_transaction_for_signature<B: PairingBackend>(
 
 /// Hashes a batch commitment for binding decryption shares to a batch.
 pub(crate) fn hash_commitment_for_signature<B: PairingBackend>(
-    commitment: &BatchCommitment<B>,
+    commitment: &TransactionBatchCommitment<B>,
 ) -> [u8; 32] {
     let mut hasher = Hasher::new();
     hasher.update(commitment.com.to_repr().as_ref());

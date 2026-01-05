@@ -8,7 +8,7 @@
 //!
 //! ## Core Protocol Types
 //! - [`EncryptedTransaction`]: Client-encrypted transactions with Ed25519 signatures
-//! - [`BatchCommitment`]: KZG polynomial commitments over transaction batches
+//! - [`TransactionBatchCommitment`]: KZG polynomial commitments over transaction batches
 //! - [`EvalProof`]: KZG evaluation proofs for batch integrity verification
 //! - [`PartialDecryption`]: Validator decryption shares
 //! - [`DecryptionContext`]: Context binding (block height, context index)
@@ -25,10 +25,7 @@
 //! # Serialization Strategy
 //!
 //! All cryptographic primitives (field elements, curve points, pairings) are serialized
-//! as **byte arrays** to ensure:
-//! - **Portability**: Independent of specific curve implementations
-//! - **Compatibility**: Works across different BLS12-381 libraries
-//! - **Determinism**: Consistent serialization format
+//! as **byte arrays**.
 //!
 //! # Example Usage
 //!
@@ -52,7 +49,6 @@
 //! - G1 points: 48-byte compressed representations
 //! - G2 points: 96-byte compressed representations
 //! - BLS signatures: compressed format (48 bytes for G1, 96 bytes for G2)
-//! - Atomic booleans in setups: serialized as regular booleans
 
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use solana_bls_signatures::{PubkeyCompressed, SignatureCompressed};
@@ -60,11 +56,11 @@ use std::sync::{atomic::AtomicBool, Arc};
 use tess::{CurvePoint, FieldElement, Fr, PairingBackend, SRS};
 
 // Re-export types for internal use
-use crate::core::types::{
-    BatchCommitment, BatchProofs, DecryptionContext, EncryptedTransaction, EvalProof,
-    PartialDecryption, ThresholdEncryptionPublicKey, ThresholdEncryptionSecretKeyShare,
-};
 use crate::crypto::tess::{EpochKeys, EpochSetup, GlobalSetup, KappaSetup, ValidatorKeyPair};
+use crate::crypto::types::{
+    BatchProofs, DecryptionContext, EncryptedTransaction, EvalProof, PartialDecryption,
+    ThresholdEncryptionPublicKey, ThresholdEncryptionSecretKeyShare, TransactionBatchCommitment,
+};
 
 // ============================================================================
 // Helper Functions - Shared utilities for serializing cryptographic primitives
@@ -343,7 +339,7 @@ impl<'de, B: PairingBackend<Scalar = Fr>> Deserialize<'de> for BatchProofs<B> {
         #[derive(Deserialize)]
         #[serde(bound(deserialize = ""))]
         struct Helper<B: PairingBackend<Scalar = Fr>> {
-            commitment: BatchCommitment<B>,
+            commitment: TransactionBatchCommitment<B>,
             proofs: Vec<EvalProof<B>>,
         }
 
@@ -352,21 +348,21 @@ impl<'de, B: PairingBackend<Scalar = Fr>> Deserialize<'de> for BatchProofs<B> {
     }
 }
 
-// BatchCommitment
-impl<B: PairingBackend> Serialize for BatchCommitment<B> {
+// TransactionBatchCommitment
+impl<B: PairingBackend> Serialize for TransactionBatchCommitment<B> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("BatchCommitment", 2)?;
+        let mut state = serializer.serialize_struct("TransactionBatchCommitment", 2)?;
         state.serialize_field("com", &curve_point_to_bytes::<B::Scalar, _>(&self.com))?;
         state.serialize_field("polynomial_degree", &self.polynomial_degree)?;
         state.end()
     }
 }
 
-impl<'de, B: PairingBackend> Deserialize<'de> for BatchCommitment<B> {
+impl<'de, B: PairingBackend> Deserialize<'de> for TransactionBatchCommitment<B> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -378,7 +374,7 @@ impl<'de, B: PairingBackend> Deserialize<'de> for BatchCommitment<B> {
         }
 
         let helper = Helper::deserialize(deserializer)?;
-        Ok(BatchCommitment {
+        Ok(TransactionBatchCommitment {
             com: curve_point_from_bytes::<B::Scalar, _, _>(&helper.com)?,
             polynomial_degree: helper.polynomial_degree,
         })

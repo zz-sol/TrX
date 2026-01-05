@@ -1,4 +1,4 @@
-//! Core protocol data types.
+//! Protocol data types used across TrX cryptographic operations.
 
 use ed25519_dalek::{Signature as Ed25519Signature, VerifyingKey as Ed25519VerifyKey};
 use solana_bls_signatures::{PubkeyCompressed, SignatureCompressed};
@@ -90,16 +90,16 @@ pub struct DecryptionContext {
 /// with each coefficient derived from `BLAKE3(tx || context)`.
 ///
 /// The commitment is included in block proposals and later used to verify
-/// [`EvalProof`]s during batch decryption.
+/// [`EvalProof`]s during collective decryption.
 #[derive(Debug)]
-pub struct BatchCommitment<B: PairingBackend> {
+pub struct TransactionBatchCommitment<B: PairingBackend> {
     /// KZG commitment: C = [p(τ)]₁ where τ is from the global setup SRS
     pub com: B::G1,
     /// Degree of the committed polynomial (batch_size - 1)
     pub polynomial_degree: u32,
 }
 
-impl<B: PairingBackend> Clone for BatchCommitment<B>
+impl<B: PairingBackend> Clone for TransactionBatchCommitment<B>
 where
     B::G1: Clone,
 {
@@ -173,13 +173,13 @@ where
 #[derive(Clone, Debug)]
 pub struct BatchProofs<B: PairingBackend<Scalar = Fr>> {
     /// KZG commitment over the batch polynomial.
-    pub commitment: BatchCommitment<B>,
+    pub commitment: TransactionBatchCommitment<B>,
     /// Evaluation proofs for each transaction.
     pub proofs: Vec<EvalProof<B>>,
 }
 
 impl<B: PairingBackend<Scalar = Fr>> BatchProofs<B> {
-    pub fn new(commitment: BatchCommitment<B>, proofs: Vec<EvalProof<B>>) -> Self {
+    pub fn new(commitment: TransactionBatchCommitment<B>, proofs: Vec<EvalProof<B>>) -> Self {
         Self { commitment, proofs }
     }
 }

@@ -25,6 +25,8 @@
 //!     └── BLS (validator consensus messages)
 //! ```
 
+pub mod errors;
 pub mod kzg;
 pub mod signatures;
 pub mod tess;
+pub mod types;

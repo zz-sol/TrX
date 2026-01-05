@@ -42,13 +42,13 @@
 //!
 //! - [`TrxCrypto`]: Main cryptographic engine implementing all protocol traits
 //! - [`TransactionEncryption`]: Client-side encryption interface
-//! - [`BatchDecryption`]: Consensus-layer batch decryption protocol
+//! - [`CollectiveDecryption`]: Consensus-layer collective decryption protocol
 //! - [`SetupManager`]: Global/epoch setup and silent key generation operations
 //!
 //! ## Data Structures
 //!
 //! - [`EncryptedTransaction`]: Encrypted transaction with client signature
-//! - [`BatchCommitment`]: KZG commitment over transaction batch
+//! - [`TransactionBatchCommitment`]: KZG commitment over transaction batch
 //! - [`EvalProof`]: KZG evaluation proof for batch integrity
 //! - [`PartialDecryption`]: Validator's decryption share
 //! - [`DecryptionContext`]: Context binding (block height, context index)
@@ -213,18 +213,17 @@
 //! ./target/release/trx demo
 //! ```
 //!
-//! Available commands: `setup`, `keygen`, `aggregate-keys`, `encrypt`, `commit`,
-//! `partial-decrypt`, `decrypt`, and `demo`. All commands support JSON input/output.
+//! Available commands: `setup`, `keygen-encryption`, `keygen-signing`, `aggregate-keys`,
+//! `encrypt`, `commit`, `partial-decrypt`, `decrypt`, and `demo`. All commands support JSON input/output.
 //!
 //! # Module Organization
 //!
-//! - **core**: Protocol types and errors
-//!   - `core::types`: Core data structures (transactions, commitments, proofs, contexts)
-//!   - `core::errors`: Error types and handling
-//! - **crypto**: Cryptographic primitives and protocol implementations
+//! - **crypto**: Cryptographic primitives, protocol implementations, and core types
 //!   - `crypto::tess`: Tess threshold encryption adapters (engine, setup, encryption, decryption)
 //!   - `crypto::kzg`: KZG polynomial commitments (batch commitments, evaluation proofs, precomputation)
 //!   - `crypto::signatures`: Signature schemes (Ed25519 for clients, BLS for validators)
+//!   - `crypto::types`: Protocol data structures (transactions, commitments, proofs, contexts)
+//!   - `crypto::errors`: Error types and handling
 //! - **serde**: JSON serialization for all protocol types
 //! - **sdk**: High-level phase-based API (see [`TrxMinion`])
 //! - **mempool**: Encrypted transaction mempool (see [`EncryptedMempool`])
@@ -240,7 +239,6 @@
 extern crate alloc;
 
 pub mod cli;
-mod core;
 mod crypto;
 mod mempool;
 mod network;
@@ -249,16 +247,16 @@ mod serde;
 mod utils;
 
 // Re-export only SDK-related types
-pub use core::errors::TrxError;
-pub use core::types::{
-    BatchCommitment, BatchContext, BatchProofs, DecryptionContext, DecryptionResult,
-    EncryptedTransaction, EvalProof, PartialDecryption, ThresholdEncryptionPublicKey,
-    ThresholdEncryptionSecretKeyShare, ValidatorId,
-};
+pub use crypto::errors::TrxError;
 pub use crypto::kzg::{verify_eval_proofs, PrecomputationEngine};
 pub use crypto::tess::{
-    BatchDecryption, EpochKeys, EpochSetup, GlobalSetup, SetupManager, TransactionEncryption,
+    CollectiveDecryption, EpochKeys, EpochSetup, GlobalSetup, SetupManager, TransactionEncryption,
     TrxCrypto, ValidatorKeyPair,
+};
+pub use crypto::types::{
+    BatchContext, BatchProofs, DecryptionContext, DecryptionResult, EncryptedTransaction,
+    EvalProof, PartialDecryption, ThresholdEncryptionPublicKey, ThresholdEncryptionSecretKeyShare,
+    TransactionBatchCommitment, ValidatorId,
 };
 pub use mempool::EncryptedMempool;
 pub use network::messages::TrxMessage;

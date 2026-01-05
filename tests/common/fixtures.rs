@@ -81,7 +81,7 @@ impl TrxTestFixture {
         &self,
         batch: &[EncryptedTransaction<PairingEngine>],
         context: &DecryptionContext,
-    ) -> BatchCommitment<PairingEngine> {
+    ) -> TransactionBatchCommitment<PairingEngine> {
         TrxCrypto::<PairingEngine>::compute_digest(batch, context, &self.epoch_setup)
             .expect("commitment computation failed")
     }
@@ -99,7 +99,7 @@ impl TrxTestFixture {
     /// Generates partial decryptions from the first `threshold` validators
     pub fn generate_partial_decryptions(
         &self,
-        commitment: &BatchCommitment<PairingEngine>,
+        commitment: &TransactionBatchCommitment<PairingEngine>,
         context: &DecryptionContext,
         tx_index: usize,
         ciphertext: &tess::Ciphertext<PairingEngine>,

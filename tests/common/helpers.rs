@@ -15,7 +15,7 @@ pub fn assert_decrypted_eq(result: &DecryptionResult, expected: &[u8]) {
 pub fn create_batch_context(
     batch: Vec<EncryptedTransaction<PairingEngine>>,
     context: DecryptionContext,
-    commitment: BatchCommitment<PairingEngine>,
+    commitment: TransactionBatchCommitment<PairingEngine>,
     eval_proofs: Vec<EvalProof<PairingEngine>>,
 ) -> BatchContext<PairingEngine> {
     BatchContext::new(batch, context, BatchProofs::new(commitment, eval_proofs))

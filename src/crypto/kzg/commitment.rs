@@ -5,7 +5,7 @@
 //!
 //! # Batch Commitments
 //!
-//! A [`BatchCommitment`] is a KZG (Kate-Zaverucha-Goldberg) polynomial commitment
+//! A [`TransactionBatchCommitment`] is a KZG (Kate-Zaverucha-Goldberg) polynomial commitment
 //! computed over a batch of transactions:
 //!
 //! 1. Construct polynomial `p(x)` with coefficients `c_i = H(tx_i || context)`
@@ -50,7 +50,7 @@
 //! let context = DecryptionContext { block_height: 1, context_index: 0 };
 //!
 //! // Compute batch commitment
-//! let commitment = BatchCommitment::compute(&batch, &context, &setup_arc)?;
+//! let commitment = TransactionBatchCommitment::compute(&batch, &context, &setup_arc)?;
 //!
 //! // Generate evaluation proofs
 //! let proofs = EvalProof::compute_for_batch(&batch, &context, &setup_arc)?;
@@ -65,10 +65,11 @@ use tess::{DensePolynomial, FieldElement, Fr, PairingBackend, PolynomialCommitme
 use tracing::instrument;
 
 use crate::{
-    BatchCommitment, DecryptionContext, EncryptedTransaction, EpochSetup, EvalProof, TrxError,
+    DecryptionContext, EncryptedTransaction, EpochSetup, EvalProof, TransactionBatchCommitment,
+    TrxError,
 };
 
-impl<B: PairingBackend<Scalar = Fr>> BatchCommitment<B> {
+impl<B: PairingBackend<Scalar = Fr>> TransactionBatchCommitment<B> {
     /// Computes a KZG commitment over the batch polynomial.
     ///
     /// Constructs polynomial `p(x)` with coefficients `c_i = H(tx_i || context)`
@@ -82,7 +83,7 @@ impl<B: PairingBackend<Scalar = Fr>> BatchCommitment<B> {
     ///
     /// # Returns
     ///
-    /// A [`BatchCommitment`] containing the KZG commitment and polynomial degree.
+    /// A [`TransactionBatchCommitment`] containing the KZG commitment and polynomial degree.
     ///
     /// # Errors
     ///
@@ -139,7 +140,6 @@ impl<B: PairingBackend<Scalar = Fr>> EvalProof<B> {
     /// # Performance
     ///
     /// This is a computationally expensive operation (O(n²) for n transactions).
-    /// Consider using the precomputation cache for frequently accessed batches.
     #[instrument(
         level = "info",
         skip_all,
@@ -230,11 +230,6 @@ pub(crate) fn batch_polynomial<B: PairingBackend<Scalar = Fr>>(
 /// - [`TrxError::InvalidInput`] if proof count mismatches, commitment is wrong,
 ///   or any individual proof fails verification
 /// - [`TrxError::Backend`] if KZG operations fail
-///
-/// # Security
-///
-/// This check is cryptographically binding under the KZG assumption. If verification
-/// passes, the batch polynomial was correctly constructed from the transactions.
 #[instrument(
     level = "info",
     skip_all,
@@ -247,7 +242,7 @@ pub(crate) fn batch_polynomial<B: PairingBackend<Scalar = Fr>>(
 )]
 pub fn verify_eval_proofs<B: PairingBackend<Scalar = Fr>>(
     setup: &EpochSetup<B>,
-    commitment: &BatchCommitment<B>,
+    commitment: &TransactionBatchCommitment<B>,
     batch: &[EncryptedTransaction<B>],
     context: &DecryptionContext,
     proofs: &[EvalProof<B>],

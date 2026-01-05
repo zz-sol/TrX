@@ -4,7 +4,7 @@
 //! partial decryptions from validators are aggregated to recover plaintexts.
 
 use crate::{
-    verify_validator_share_bound, BatchContext, BatchDecryption, DecryptionResult, EpochSetup,
+    verify_validator_share_bound, BatchContext, CollectiveDecryption, DecryptionResult, EpochSetup,
     PartialDecryption, ThresholdEncryptionPublicKey, TrxCrypto, TrxError,
 };
 use tess::{Fr, PairingBackend};

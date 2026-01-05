@@ -10,12 +10,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tess::PairingEngine;
 
-use crate::core::types::{
-    BatchCommitment, BatchContext, BatchProofs, DecryptionContext, EncryptedTransaction, EvalProof,
-    PartialDecryption, ThresholdEncryptionPublicKey, ThresholdEncryptionSecretKeyShare,
-};
 use crate::crypto::signatures::ValidatorSigningKey;
 use crate::crypto::tess::{EpochSetup, ValidatorKeyPair};
+use crate::crypto::types::{
+    BatchContext, BatchProofs, DecryptionContext, EncryptedTransaction, EvalProof,
+    PartialDecryption, ThresholdEncryptionPublicKey, ThresholdEncryptionSecretKeyShare,
+    TransactionBatchCommitment,
+};
 use crate::sdk::TrxMinion;
 
 use super::commands::Commands;
@@ -217,7 +218,7 @@ pub fn execute(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 serde_json::from_str(&share_json)?;
 
             let comm_json = fs::read_to_string(&commitment)?;
-            let comm: BatchCommitment<Backend> = serde_json::from_str(&comm_json)?;
+            let comm: TransactionBatchCommitment<Backend> = serde_json::from_str(&comm_json)?;
 
             let tx_json = fs::read_to_string(&encrypted_tx)?;
             let tx: EncryptedTransaction<Backend> = serde_json::from_str(&tx_json)?;
@@ -279,7 +280,7 @@ pub fn execute(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             let pk: ThresholdEncryptionPublicKey<Backend> = serde_json::from_str(&pk_json)?;
 
             let comm_json = fs::read_to_string(&commitment)?;
-            let comm: BatchCommitment<Backend> = serde_json::from_str(&comm_json)?;
+            let comm: TransactionBatchCommitment<Backend> = serde_json::from_str(&comm_json)?;
 
             let proofs_json = fs::read_to_string(&eval_proofs)?;
             let proofs: Vec<EvalProof<Backend>> = serde_json::from_str(&proofs_json)?;

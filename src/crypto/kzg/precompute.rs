@@ -55,22 +55,14 @@ use tess::{Fr, PairingBackend};
 use tracing::instrument;
 
 use crate::{
-    BatchCommitment, BatchDecryption, DecryptionContext, EncryptedTransaction, EpochSetup,
-    EvalProof, TrxCrypto, TrxError,
+    CollectiveDecryption, DecryptionContext, EncryptedTransaction, EpochSetup, EvalProof,
+    TransactionBatchCommitment, TrxCrypto, TrxError,
 };
 
 /// Cache for expensive batch commitment and proof computations.
 ///
 /// Stores precomputed KZG commitments and evaluation proofs keyed by batch hash
 /// and context. Thread-safe via internal mutex.
-///
-/// # Performance
-///
-/// Cache hits eliminate:
-/// - O(n) commitment computation
-/// - O(n²) proof generation
-///
-/// Typical speedup: 100-1000x for cache hits depending on batch size.
 #[derive(Debug)]
 pub struct PrecomputationEngine<B: PairingBackend<Scalar = Fr>> {
     /// Thread-safe cache mapping (batch_hash, context) to precomputed data
@@ -83,7 +75,7 @@ pub struct PrecomputationEngine<B: PairingBackend<Scalar = Fr>> {
 #[derive(Debug)]
 pub struct PrecomputedData<B: PairingBackend<Scalar = Fr>> {
     /// KZG commitment over the batch polynomial
-    pub digest: BatchCommitment<B>,
+    pub digest: TransactionBatchCommitment<B>,
     /// KZG evaluation proofs (one per transaction)
     pub eval_proofs: Vec<EvalProof<B>>,
     /// Time spent computing (zero if cache hit)
@@ -104,10 +96,6 @@ where
 }
 impl<B: PairingBackend<Scalar = Fr>> PrecomputationEngine<B> {
     /// Creates a new empty precomputation cache.
-    ///
-    /// # Returns
-    ///
-    /// An empty cache ready to store precomputed data.
     #[instrument(level = "info", skip_all)]
     pub fn new() -> Self {
         Self {
@@ -136,11 +124,6 @@ impl<B: PairingBackend<Scalar = Fr>> PrecomputationEngine<B> {
     /// # Errors
     ///
     /// Returns [`TrxError`] if KZG operations fail (only on cache miss).
-    ///
-    /// # Thread Safety
-    ///
-    /// Safe to call concurrently from multiple threads. Cache access is synchronized
-    /// via internal mutex.
     #[instrument(
         level = "info",
         skip_all,
@@ -193,8 +176,7 @@ impl<B: PairingBackend<Scalar = Fr>> Default for PrecomputationEngine<B> {
 
 /// Computes the cache key for a batch and context.
 ///
-/// The key binds both the batch contents and the decryption context to prevent
-/// cache hits across different contexts (which would break security).
+/// The key binds both the batch contents and the decryption context.
 ///
 /// # Arguments
 ///

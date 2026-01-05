@@ -13,7 +13,7 @@ pub mod encryption;
 pub mod engine;
 pub mod setup;
 
-pub use decryption::BatchDecryption;
+pub use decryption::CollectiveDecryption;
 pub use encryption::TransactionEncryption;
 pub use engine::TrxCrypto;
 pub use setup::{EpochKeys, EpochSetup, GlobalSetup, KappaSetup, SetupManager, ValidatorKeyPair};

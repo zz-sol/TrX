@@ -1,4 +1,4 @@
-//! Batch decryption operations for consensus processing.
+//! Collective decryption operations for consensus processing.
 
 use std::collections::BTreeMap;
 
@@ -11,23 +11,23 @@ use tracing::instrument;
 
 use super::engine::TrxCrypto;
 use crate::{
-    verify_eval_proofs, BatchCommitment, BatchContext, DecryptionContext, EncryptedTransaction,
-    EvalProof, PartialDecryption, ThresholdEncryptionSecretKeyShare, TrxError,
+    verify_eval_proofs, BatchContext, DecryptionContext, EncryptedTransaction, EvalProof,
+    PartialDecryption, ThresholdEncryptionSecretKeyShare, TransactionBatchCommitment, TrxError,
 };
 
-/// Batch decryption interface for consensus-layer transaction processing.
-pub trait BatchDecryption<B: PairingBackend<Scalar = Fr>> {
+/// Collective decryption interface for consensus-layer transaction processing.
+pub trait CollectiveDecryption<B: PairingBackend<Scalar = Fr>> {
     /// Computes a KZG commitment (digest) over a batch of encrypted transactions.
     fn compute_digest(
         batch: &[EncryptedTransaction<B>],
         context: &DecryptionContext,
         setup: &super::setup::EpochSetup<B>,
-    ) -> Result<BatchCommitment<B>, TrxError>;
+    ) -> Result<TransactionBatchCommitment<B>, TrxError>;
 
     /// Generates a partial decryption share for a single transaction.
     fn generate_partial_decryption(
         sk_share: &ThresholdEncryptionSecretKeyShare<B>,
-        commitment: &BatchCommitment<B>,
+        commitment: &TransactionBatchCommitment<B>,
         context: &DecryptionContext,
         tx_index: usize,
         ciphertext: &TessCiphertext<B>,
@@ -37,7 +37,7 @@ pub trait BatchDecryption<B: PairingBackend<Scalar = Fr>> {
     /// TODO: defer the pairing check when multiple shares are verified together.
     fn verify_partial_decryption(
         pd: &PartialDecryption<B>,
-        commitment: &BatchCommitment<B>,
+        commitment: &TransactionBatchCommitment<B>,
         ciphertext: &TessCiphertext<B>,
         agg_key: &AggregateKey<B>,
     ) -> Result<(), TrxError>;
@@ -63,7 +63,7 @@ pub trait BatchDecryption<B: PairingBackend<Scalar = Fr>> {
         B::G1: PartialEq;
 }
 
-impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
+impl<B: PairingBackend<Scalar = Fr>> CollectiveDecryption<B> for TrxCrypto<B> {
     #[instrument(
         level = "info",
         skip_all,
@@ -73,8 +73,8 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
         batch: &[EncryptedTransaction<B>],
         context: &DecryptionContext,
         setup: &super::setup::EpochSetup<B>,
-    ) -> Result<BatchCommitment<B>, TrxError> {
-        BatchCommitment::compute(batch, context, setup)
+    ) -> Result<TransactionBatchCommitment<B>, TrxError> {
+        TransactionBatchCommitment::compute(batch, context, setup)
     }
 
     #[instrument(
@@ -84,7 +84,7 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
     )]
     fn generate_partial_decryption(
         sk_share: &ThresholdEncryptionSecretKeyShare<B>,
-        _commitment: &BatchCommitment<B>,
+        _commitment: &TransactionBatchCommitment<B>,
         context: &DecryptionContext,
         tx_index: usize,
         ciphertext: &TessCiphertext<B>,
@@ -103,7 +103,7 @@ impl<B: PairingBackend<Scalar = Fr>> BatchDecryption<B> for TrxCrypto<B> {
     #[instrument(level = "info", skip_all, fields(validator_id = pd.validator_id))]
     fn verify_partial_decryption(
         pd: &PartialDecryption<B>,
-        _commitment: &BatchCommitment<B>,
+        _commitment: &TransactionBatchCommitment<B>,
         ciphertext: &TessCiphertext<B>,
         agg_key: &AggregateKey<B>,
     ) -> Result<(), TrxError> {

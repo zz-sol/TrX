@@ -1,22 +1,9 @@
-//! Cryptographic signature helpers for clients and validators.
+//! BLS signature functions for validator consensus operations.
 //!
-//! This module provides signature functionality for two different parties in TrX.
-//! All BLS signature functions and types are **public API** and can be used for
-//! custom consensus protocols.
+//! This module provides BLS signature functionality for validators in the TrX protocol.
+//! All functions and types are **public API** and can be used for custom consensus protocols.
 //!
-//! # Client Signatures (Ed25519)
-//!
-//! Clients sign their encrypted transactions using Ed25519:
-//! - Fast signature generation and verification
-//! - Small signature size (64 bytes)
-//! - Binds transaction ciphertext to associated metadata
-//!
-//! The signature message is `BLAKE3(ciphertext.payload || associated_data)`.
-//!
-//! Client signatures are handled internally by [`TransactionEncryption::encrypt_transaction`]
-//! and [`TransactionEncryption::verify_ciphertext`].
-//!
-//! # Validator Signatures (BLS) - Public API
+//! # Validator Signatures (BLS)
 //!
 //! Validators use BLS signatures for consensus operations:
 //! - **Vote Signatures**: Sign votes with optional partial decryptions

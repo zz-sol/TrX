@@ -4,9 +4,9 @@
 //! key generation and creating partial decryptions for batches.
 
 use crate::{
-    sign_validator_share_bound, validator_verify_key, BatchCommitment, BatchDecryption,
-    DecryptionContext, PartialDecryption, ThresholdEncryptionSecretKeyShare, TrxCrypto, TrxError,
-    ValidatorKeyPair, ValidatorSigningKey,
+    sign_validator_share_bound, validator_verify_key, CollectiveDecryption, DecryptionContext,
+    PartialDecryption, ThresholdEncryptionSecretKeyShare, TransactionBatchCommitment, TrxCrypto,
+    TrxError, ValidatorKeyPair, ValidatorSigningKey,
 };
 use tess::{Ciphertext as TessCiphertext, Fr, PairingBackend};
 
@@ -123,7 +123,7 @@ impl<'a, B: PairingBackend<Scalar = Fr>> ValidatorPhase<'a, B> {
     pub(crate) fn generate_partial_decryption(
         &self,
         secret_share: &ThresholdEncryptionSecretKeyShare<B>,
-        commitment: &BatchCommitment<B>,
+        commitment: &TransactionBatchCommitment<B>,
         context: &DecryptionContext,
         tx_index: usize,
         ciphertext: &TessCiphertext<B>,
@@ -145,7 +145,7 @@ impl<'a, B: PairingBackend<Scalar = Fr>> ValidatorPhase<'a, B> {
         &self,
         signing_key: &ValidatorSigningKey,
         secret_share: &ThresholdEncryptionSecretKeyShare<B>,
-        commitment: &BatchCommitment<B>,
+        commitment: &TransactionBatchCommitment<B>,
         context: &DecryptionContext,
         tx_index: usize,
         ciphertext: &TessCiphertext<B>,

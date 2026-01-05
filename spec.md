@@ -59,7 +59,7 @@ pub struct DecryptionContext {
     context_index: u32,  // κ index
 }
 
-pub struct BatchCommitment {
+pub struct TransactionBatchCommitment {
     com: G1Element,      // KZG commitment to batch polynomial
     polynomial_degree: u32,
 }
@@ -73,7 +73,7 @@ pub struct EvalProof {
 pub struct BatchContext {
     transactions: Vec<EncryptedTransaction>,
     context: DecryptionContext,
-    commitment: BatchCommitment,
+    commitment: TransactionBatchCommitment,
     proofs: Vec<EvalProof>,
 }
 ```
@@ -207,20 +207,20 @@ pub trait TransactionEncryption {
 }
 ```
 
-### 3.4 Batch Decryption
+### 3.4 Collective Decryption
 ```rust
-pub trait BatchDecryption {
+pub trait CollectiveDecryption {
     /// Compute digest for batch (public operation)
     fn compute_digest(
         batch: &[EncryptedTransaction],
         context: &DecryptionContext,
         setup: &EpochSetup,
-    ) -> Result<BatchCommitment>;
+    ) -> Result<TransactionBatchCommitment>;
     
     /// Generate partial decryption share
     fn generate_partial_decryption(
         sk_share: &SecretKeyShare,
-        commitment: &BatchCommitment,
+        commitment: &TransactionBatchCommitment,
         context: &DecryptionContext,
         tx_index: usize,
         ciphertext: &Ciphertext,
@@ -229,7 +229,7 @@ pub trait BatchDecryption {
     /// Verify partial decryption
     fn verify_partial_decryption(
         pd: &PartialDecryption,
-        commitment: &BatchCommitment,
+        commitment: &TransactionBatchCommitment,
         public_keys: &HashMap<ValidatorId, PublicKey>,
     ) -> Result<()>;
     
@@ -298,7 +298,7 @@ pub struct PrecomputationEngine {
 }
 
 pub struct PrecomputedData {
-    digest: BatchCommitment,
+    digest: TransactionBatchCommitment,
     eval_proofs: Vec<EvalProof>,
     computation_time: Duration,
 }

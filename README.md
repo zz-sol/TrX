@@ -30,14 +30,6 @@ If you use this library in your research, please cite the original papers:
 }
 ```
 
-## Overview
-
-TrX provides a complete cryptographic infrastructure for confidential transaction processing with threshold decryption. It combines:
-- **Tess threshold encryption** with silent setup
-- **KZG batch commitments** and openings for efficient proof generation
-- **Ed25519 signatures** for client transaction authentication
-- **BLS signatures** for validator coordination
-
 ## End-to-End Workflow
 1. **Setup**: Generate a global setup (SRS), then derive an epoch setup (kappa contexts).
 2. **Silent Setup**: Each validator independently generates their own key pair, then public keys are aggregated non-interactively.
@@ -91,7 +83,7 @@ Available commands:
 
 All commands support JSON input/output for easy integration.
 
-## SDK Usage (Recommended)
+## SDK Usage 
 
 The SDK provides a high-level, phase-based API that simplifies encrypted mempool integration:
 
@@ -248,24 +240,13 @@ let proof_json = serde_json::to_string(&eval_proof)?;
 let share_json = serde_json::to_string(&partial_decryption)?;
 ```
 
-Serializable types include:
-- **Core types**: `EncryptedTransaction`, `PartialDecryption`, `DecryptionContext`, `BatchCommitment`, `BatchProofs`, `EvalProof`
-- **Crypto types**: `GlobalSetup`, `EpochSetup`, `KappaSetup`, `EpochKeys`, `ValidatorKeyPair`, `PublicKey`, `SecretKeyShare`
-- **Tess types**: `Ciphertext`, `AggregateKey`, `SRS`, `Params`, `PublicKey`, `SecretKey`
-
-This enables:
-- Persistent storage of setup parameters
-- Network transmission of cryptographic objects
-- Easy integration with JSON-based APIs
-- Cross-language compatibility
-
 ## Architecture
 
 ### System Layers
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  Client Layer                                           │
-│  • Encrypt transactions with Ed25519 signatures         │
+│  • Encrypt transactions, sign with Ed25519 signatures   │
 │  • Submit to network                                    │
 └─────────────────────────────────────────────────────────┘
                            ↓
@@ -292,19 +273,9 @@ validator -> generate_partial_decryption
 leader    -> combine_and_decrypt (verifies KZG proofs, aggregates shares)
 ```
 
-## Key Types
-
-| Type | Description | Location |
-|------|-------------|----------|
-| `EncryptedTransaction` | Tess ciphertext + associated data + Ed25519 signature | [src/core/types.rs](src/core/types.rs) |
-| `BatchCommitment` | KZG commitment to the batch polynomial | [src/crypto/kzg.rs](src/crypto/kzg.rs) |
-| `EvalProof` | KZG opening `(point, value, proof)` for each tx | [src/crypto/kzg.rs](src/crypto/kzg.rs) |
-| `PartialDecryption` | Validator share for a single tx | [src/core/types.rs](src/core/types.rs) |
-| `BatchContext` | Owned bundle of `{transactions, context, commitment, proofs}` for batch operations | [src/core/types.rs](src/core/types.rs) |
-
 ## Core APIs
 
-### High-Level SDK (Recommended)
+### High-Level SDK
 
 The SDK provides phase-based interfaces in [src/sdk](src/sdk):
 - **`TrxMinion`**: Main client wrapping all phases
@@ -317,7 +288,7 @@ The SDK provides phase-based interfaces in [src/sdk](src/sdk):
 
 ### Low-Level Cryptographic API
 
-All core functionality is implemented in [src/crypto/trx_crypto.rs](src/crypto/trx_crypto.rs).
+All core functionality is implemented in [src/crypto/tess/engine.rs](src/crypto/tess/engine.rs).
 
 #### Setup and Silent Key Generation
 | Function | Description |
@@ -368,60 +339,6 @@ The `TrxMessage` enum ([src/network/messages.rs](src/network/messages.rs)) defin
 - `VoteWithDecryption` - Validator vote + optional PD
 - `RequestDecryptionShares` - Request PDs for batch
 - `DecryptionShare` - Validator responds with PD
-
-## Technical Details
-
-### Signature Schemes
-| Component | Scheme | Location | Purpose |
-|-----------|--------|----------|---------|
-| Client transactions | Ed25519 | [verify_ciphertext](src/crypto/trx_crypto.rs) | Transaction authenticity |
-| Validator votes/shares | BLS | [signatures.rs](src/crypto/signatures.rs) | Consensus coordination |
-
-## Configuration
-
-### System Requirements
-- `threshold < parties` (typically `parties` is a power of two for Tess)
-- Batch size constraint: `batch.len() + 1 <= epoch_setup.srs().powers_of_g.len()`
-- Ed25519 signatures use 32-byte Blake3 hash
-
-## Project Structure
-
-```
-src/
-├── bin/
-│   └── trx.rs          # CLI binary for testing and development
-├── core/
-│   ├── types.rs        # Protocol data structures
-│   ├── errors.rs       # Error types
-│   ├── serde_impl.rs   # Serde for core types
-│   └── mod.rs
-├── crypto/
-│   ├── trx_crypto.rs   # Main TrxCrypto implementation
-│   ├── kzg.rs          # KZG commitments and proofs
-│   ├── signatures.rs   # BLS validator signatures (public API)
-│   ├── pre_computation.rs # KZG caching layer
-│   ├── serde_impl.rs   # Serde for crypto types
-│   └── mod.rs
-├── sdk/
-│   ├── mod.rs          # TrxMinion and phase traits
-│   ├── setup.rs        # SetupPhase implementation
-│   ├── validator.rs    # ValidatorPhase implementation
-│   ├── client.rs       # ClientPhase implementation
-│   ├── mempool.rs      # MempoolPhase implementation
-│   ├── proposer.rs     # ProposerPhase implementation
-│   └── decryption.rs   # DecryptionPhase implementation
-├── mempool/
-│   └── mod.rs          # EncryptedMempool
-├── network/
-│   └── messages.rs     # TrxMessage protocol enum
-└── lib.rs              # Public API exports
-
-examples/
-└── sdk_example.rs      # Complete SDK example
-
-tests/
-└── flow.rs             # End-to-end integration tests
-```
 
 ## License
 

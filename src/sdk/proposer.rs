@@ -4,8 +4,8 @@
 //! of encrypted transactions using KZG commitments.
 
 use crate::{
-    verify_eval_proofs, BatchCommitment, BatchDecryption, DecryptionContext, EncryptedTransaction,
-    EpochSetup, EvalProof, TrxCrypto, TrxError,
+    verify_eval_proofs, CollectiveDecryption, DecryptionContext, EncryptedTransaction, EpochSetup,
+    EvalProof, TransactionBatchCommitment, TrxCrypto, TrxError,
 };
 use tess::{Fr, PairingBackend};
 
@@ -111,7 +111,7 @@ where
         batch: &[EncryptedTransaction<B>],
         context: &DecryptionContext,
         setup: &EpochSetup<B>,
-    ) -> Result<BatchCommitment<B>, TrxError> {
+    ) -> Result<TransactionBatchCommitment<B>, TrxError> {
         TrxCrypto::<B>::compute_digest(batch, context, setup)
     }
 
@@ -243,7 +243,7 @@ where
     pub fn verify_eval_proofs(
         &self,
         setup: &EpochSetup<B>,
-        commitment: &BatchCommitment<B>,
+        commitment: &TransactionBatchCommitment<B>,
         batch: &[EncryptedTransaction<B>],
         context: &DecryptionContext,
         proofs: &[EvalProof<B>],
