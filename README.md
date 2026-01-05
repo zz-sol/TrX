@@ -36,11 +36,11 @@ If you use this library in your research, please cite the original papers:
 3. **Client encrypt + sign**: Client encrypts payload and signs
    `hash(ciphertext.payload || associated_data)` with Ed25519.
 4. **Mempool**: Nodes verify the client signature and store encrypted txs.
-5. **Batch commit + proofs**: Build a batch polynomial, commit with KZG, and
-   generate per-tx KZG openings (eval proofs).
+5. **Batch commit + proofs**: Build a batch polynomial, commit with a
+   context-specific kappa SRS, and generate per-tx KZG openings (eval proofs).
 6. **Partial decryptions**: Validators produce decryption shares per tx.
 7. **Combine + decrypt**: Verify KZG eval proofs against the batch commitment,
-   then combine shares once the threshold is met.
+   consume the kappa context (single-use), then combine shares once the threshold is met.
 
 ## Quick Start
 
@@ -268,9 +268,9 @@ let share_json = serde_json::to_string(&partial_decryption)?;
 ```
 client    -> encrypt_transaction + sign (Ed25519)
 node      -> verify_ciphertext -> mempool
-proposer  -> compute_digest + compute_eval_proofs (KZG)
+proposer  -> compute_digest + compute_eval_proofs (KZG, kappa SRS)
 validator -> generate_partial_decryption
-leader    -> combine_and_decrypt (verifies KZG proofs, aggregates shares)
+leader    -> combine_and_decrypt (verifies KZG proofs, consumes kappa context, aggregates shares)
 ```
 
 ## Core APIs

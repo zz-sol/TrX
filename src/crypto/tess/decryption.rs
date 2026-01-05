@@ -193,6 +193,9 @@ impl<B: PairingBackend<Scalar = Fr>> CollectiveDecryption<B> for TrxCrypto<B> {
             return Err(TrxError::InvalidConfig("no parties in agg key".into()));
         }
 
+        setup.validate_context_index(context.context_index)?;
+        setup.kappa_setups[context.context_index as usize].try_use()?;
+
         // TODO: batch verify signatures on partial decryptions
         for tx in &batch_ctx.transactions {
             TrxCrypto::<B>::verify_ciphertext(tx)?;

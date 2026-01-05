@@ -61,7 +61,10 @@
 //! # }
 //! ```
 
-use tess::{DensePolynomial, FieldElement, Fr, PairingBackend, PolynomialCommitment, KZG};
+use tess::{
+    CurvePoint, DensePolynomial, FieldElement, Fr, PairingBackend, PolynomialCommitment,
+    TargetGroup, KZG,
+};
 use tracing::instrument;
 
 use crate::{
@@ -108,7 +111,8 @@ impl<B: PairingBackend<Scalar = Fr>> TransactionBatchCommitment<B> {
             ));
         }
         let polynomial = batch_polynomial(batch, context);
-        let com = KZG::commit_g1(setup.srs(), &polynomial)
+        let kappa_srs = setup.kappa_srs(context.context_index)?;
+        let com = KZG::commit_g1(&kappa_srs, &polynomial)
             .map_err(|err| TrxError::Backend(err.to_string()))?;
         Ok(Self {
             com,
@@ -159,10 +163,11 @@ impl<B: PairingBackend<Scalar = Fr>> EvalProof<B> {
             ));
         }
         let polynomial = batch_polynomial(batch, context);
+        let kappa_srs = setup.kappa_srs(context.context_index)?;
         let mut proofs = Vec::with_capacity(batch.len());
         for (idx, _) in batch.iter().enumerate() {
             let point = Fr::from_u64(idx as u64 + 1);
-            let (value, proof) = KZG::open_g1(setup.srs(), &polynomial, &point)
+            let (value, proof) = KZG::open_g1(&kappa_srs, &polynomial, &point)
                 .map_err(|err| TrxError::Backend(err.to_string()))?;
             proofs.push(Self {
                 point,
@@ -257,29 +262,59 @@ where
         ));
     }
     let polynomial = batch_polynomial(batch, context);
-    let expected_commitment = KZG::commit_g1(setup.srs(), &polynomial)
+    let kappa_srs = setup.kappa_srs(context.context_index)?;
+    let expected_commitment = KZG::commit_g1(&kappa_srs, &polynomial)
         .map_err(|err| TrxError::Backend(err.to_string()))?;
     if expected_commitment != commitment.com {
         return Err(TrxError::InvalidInput(
             "batch commitment does not match batch".into(),
         ));
     }
+    let g_kappa = kappa_srs
+        .powers_of_g
+        .first()
+        .cloned()
+        .ok_or_else(|| TrxError::InvalidConfig("kappa SRS missing G1 powers".into()))?;
     for (idx, proof) in proofs.iter().enumerate() {
         let expected = Fr::from_u64(idx as u64 + 1);
         if proof.point != expected {
             return Err(TrxError::InvalidInput("eval proof point mismatch".into()));
         }
-        let ok = KZG::verify_g1(
-            setup.srs(),
+        let ok = verify_kappa_proof(
+            &kappa_srs,
+            &g_kappa,
             &commitment.com,
             &proof.point,
             &proof.value,
             &proof.proof,
-        )
-        .map_err(|err| TrxError::Backend(err.to_string()))?;
+        )?;
         if !ok {
             return Err(TrxError::InvalidInput("invalid evaluation proof".into()));
         }
     }
     Ok(())
+}
+
+fn verify_kappa_proof<B: PairingBackend<Scalar = Fr>>(
+    params: &tess::SRS<B>,
+    g_kappa: &B::G1,
+    commitment: &B::G1,
+    point: &B::Scalar,
+    value: &B::Scalar,
+    proof: &B::G1,
+) -> Result<bool, TrxError> {
+    if params.powers_of_h.len() < 2 {
+        return Err(TrxError::InvalidConfig("insufficient SRS powers".into()));
+    }
+
+    let h = params.powers_of_h[0];
+    let h_tau = params.powers_of_h[1];
+
+    // Verify: e(C - g_kappa*v, h) == e(π, h*τ - h*z)
+    let lhs = commitment.sub(&g_kappa.mul_scalar(value));
+    let neg_proof = proof.negate();
+    let rhs = h_tau.sub(&h.mul_scalar(point));
+    let check = B::multi_pairing(&[lhs, neg_proof], &[h, rhs])
+        .map_err(|err| TrxError::Backend(err.to_string()))?;
+    Ok(check == B::Target::identity())
 }

@@ -66,6 +66,35 @@ impl<B: PairingBackend<Scalar = Fr>> EpochSetup<B> {
     pub fn srs(&self) -> &SRS<B> {
         &self.global_setup.srs
     }
+
+    /// Build a context-specific SRS using the kappa-randomized G1 powers.
+    pub fn kappa_srs(&self, context_index: u32) -> Result<SRS<B>, TrxError> {
+        self.validate_context_index(context_index)?;
+        let kappa_setup = &self.kappa_setups[context_index as usize];
+        if kappa_setup.elements.len() != self.global_setup.srs.powers_of_g.len() {
+            return Err(TrxError::InvalidConfig(
+                "kappa setup length does not match SRS powers".into(),
+            ));
+        }
+        let g_kappa = kappa_setup
+            .elements
+            .first()
+            .cloned()
+            .ok_or_else(|| TrxError::InvalidConfig("kappa setup missing elements".into()))?;
+        let h = self
+            .global_setup
+            .srs
+            .powers_of_h
+            .first()
+            .cloned()
+            .ok_or_else(|| TrxError::InvalidConfig("SRS missing G2 powers".into()))?;
+        let e_gh = B::pairing(&g_kappa, &h);
+        Ok(SRS {
+            powers_of_g: kappa_setup.elements.clone(),
+            powers_of_h: self.global_setup.srs.powers_of_h.clone(),
+            e_gh,
+        })
+    }
 }
 
 /// Single-use randomized context for batch decryption.

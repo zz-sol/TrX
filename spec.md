@@ -82,7 +82,7 @@ pub struct DecryptionContext {
 }
 
 pub struct TransactionBatchCommitment {
-    com: G1Element,      // KZG commitment to batch polynomial
+    com: G1Element,      // KZG commitment to batch polynomial (kappa-randomized)
     polynomial_degree: u32,
 }
 
@@ -92,11 +92,15 @@ pub struct EvalProof {
     proof: G1Element,
 }
 
+pub struct BatchProofs {
+    commitment: TransactionBatchCommitment,
+    proofs: Vec<EvalProof>,
+}
+
 pub struct BatchContext {
     transactions: Vec<EncryptedTransaction>,
     context: DecryptionContext,
-    commitment: TransactionBatchCommitment,
-    proofs: Vec<EvalProof>,
+    batch_proofs: BatchProofs,
 }
 ```
 
@@ -285,6 +289,11 @@ pub trait CollectiveDecryption {
 }
 ```
 
+Notes:
+- `compute_digest` and `compute_eval_proofs` use the context-specific kappa SRS
+  (the G1 powers are randomized by `kappa_setups[context_index]`).
+- `combine_and_decrypt` consumes the kappa context via `try_use()` to enforce single-use.
+
 ## 4. Consensus Integration
 
 ### 4.1 Enhanced Consensus Interface
@@ -346,6 +355,8 @@ impl PrecomputationEngine {
     /// it's safe to release decryption shares. Operations are:
     /// 1. Digest: compute KZG commitment (public, untrusted)
     /// 2. Eval proofs: compute evaluation proofs (public, untrusted)
+    ///
+    /// This does not consume the kappa context; single-use is enforced at decryption.
     pub fn precompute(
         &self,
         batch: &[EncryptedTransaction],
