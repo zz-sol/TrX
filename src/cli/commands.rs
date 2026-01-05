@@ -40,8 +40,8 @@ pub enum Commands {
         threshold: usize,
     },
 
-    /// Generate validator keypair
-    Keygen {
+    /// Generate validator threshold keypair
+    KeygenEncryption {
         /// Validator ID
         #[arg(long)]
         validator_id: u32,

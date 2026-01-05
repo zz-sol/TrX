@@ -80,7 +80,8 @@ cargo build --release --bin trx
 
 Available commands:
 - `setup` - Generate epoch setup (global SRS + kappa contexts)
-- `keygen` - Generate validator keys (silent setup)
+- `keygen-encryption` - Generate validator threshold keys (silent setup)
+- `keygen-signing` - Generate validator BLS signing keys
 - `aggregate-keys` - Aggregate validator public keys
 - `encrypt` - Encrypt a transaction
 - `commit` - Compute batch commitment

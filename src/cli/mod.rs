@@ -9,7 +9,7 @@
 //! # Available Commands
 //!
 //! - `setup`: Generate global and epoch setup parameters
-//! - `keygen`: Generate individual validator key pairs
+//! - `keygen-encryption`: Generate validator threshold key pairs
 //! - `keygen-signing`: Generate BLS signing keys for validators
 //! - `aggregate-keys`: Aggregate validator public keys into epoch key
 //! - `encrypt`: Encrypt a transaction for inclusion in mempool

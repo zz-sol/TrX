@@ -60,7 +60,7 @@ pub fn execute(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             println!("✓ Epoch setup written to {}", output.display());
         }
 
-        Commands::Keygen {
+        Commands::KeygenEncryption {
             validator_id,
             output,
             num_validators,
