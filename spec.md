@@ -11,13 +11,35 @@
 │                    (with TrX hooks)                     │
 ├─────────────────────────────────────────────────────────┤
 │                  TrX Encryption Layer                   │
-│  ┌──────────┐  ┌──────────┐  ┌────────────────────┐     │
-│  │  Setup   │  │  Batch   │  │   Precomputation   │     │
-│  │  Manager │  │  Crypto  │  │      Engine        │     │
-│  └──────────┘  └──────────┘  └────────────────────┘     │
+│   ┌──────────┐  ┌──────────────┐  ┌────────────────┐    │
+│   │  Setup   │  │  Collective  │  │ Precomputation │    │
+│   │  Manager │  │  Decryption  │  │     Engine     │    │
+│   └──────────┘  └──────────────┘  └────────────────┘    │
 ├─────────────────────────────────────────────────────────┤
 │                   Encrypted Mempool                     │
 └─────────────────────────────────────────────────────────┘
+```
+
+### 1.2 Module Structure
+```
+trx/
+├── crypto/                    # Cryptographic primitives + protocol types
+│   ├── types.rs              # Core data structures
+│   ├── errors.rs             # Error types
+│   ├── tess/                 # Threshold encryption (Tess adapters)
+│   │   ├── engine.rs         # TrxCrypto main struct
+│   │   ├── setup.rs          # Setup and key generation
+│   │   ├── encryption.rs     # Transaction encryption
+│   │   └── decryption.rs     # Collective decryption
+│   ├── kzg/                  # KZG commitments
+│   │   ├── commitment.rs     # Batch commitments and proofs
+│   │   └── precompute.rs     # Precomputation cache
+│   └── signatures/           # Signature schemes
+│       └── bls.rs            # BLS validator signatures
+├── sdk/                      # Phase-based high-level API
+├── mempool/                  # Encrypted transaction queue
+├── network/                  # Protocol messages
+└── cli/                      # Command-line interface
 ```
 
 ## 2. Data Structures
@@ -137,19 +159,28 @@ pub trait SetupManager {
 }
 ```
 
-### 3.2 BLS Signature Functions (Public API)
+### 3.2 Signature Handling
 
-The following BLS signature functions are exposed as part of the public API for building custom consensus protocols:
+The TrX protocol uses two signature schemes:
+
+#### Ed25519 Client Signatures (Internal)
+Client transaction signatures are handled internally by the `TransactionEncryption` trait:
+- Automatically included when calling `encrypt_transaction()`
+- Prevents transaction malleability
+- Verified as part of ciphertext validation
+
+#### BLS Validator Signatures (Public API)
+Validator signatures for consensus messages are exposed as public API for building custom consensus protocols:
 
 ```rust
 /// Validator's BLS secret signing key
 pub type ValidatorSigningKey = SecretKey;
 
 /// Validator's compressed BLS public verification key
-pub type ValidatorVerifyKey = solana_bls_signatures::PubkeyCompressed;
+pub type ValidatorVerifyKey = PubkeyCompressed;
 
 /// Validator's compressed BLS signature
-pub type ValidatorSignature = solana_bls_signatures::SignatureCompressed;
+pub type ValidatorSignature = SignatureCompressed;
 
 /// Sign a validator vote (with optional partial decryption)
 pub fn sign_validator_vote<B: PairingBackend>(
@@ -166,16 +197,18 @@ pub fn verify_validator_vote<B: PairingBackend>(
     signature: &ValidatorSignature,
 ) -> Result<(), TrxError>;
 
-/// Sign a validator decryption share
-pub fn sign_validator_share<B: PairingBackend>(
+/// Sign a commitment-bound decryption share
+pub fn sign_validator_share_bound<B: PairingBackend>(
     signing_key: &ValidatorSigningKey,
     share: &PartialDecryption<B>,
+    commitment: &TransactionBatchCommitment<B>,
 ) -> ValidatorSignature;
 
-/// Verify a validator decryption share signature
-pub fn verify_validator_share<B: PairingBackend>(
+/// Verify a commitment-bound decryption share signature
+pub fn verify_validator_share_bound<B: PairingBackend>(
     verify_key: &ValidatorVerifyKey,
     share: &PartialDecryption<B>,
+    commitment: &TransactionBatchCommitment<B>,
     signature: &ValidatorSignature,
 ) -> Result<(), TrxError>;
 ```
@@ -184,7 +217,8 @@ These functions are available in the public API via:
 ```rust
 use trx::{
     sign_validator_vote, verify_validator_vote,
-    sign_validator_share, verify_validator_share,
+    sign_validator_share_bound, verify_validator_share_bound,
+    validator_verify_key,
     ValidatorSigningKey, ValidatorVerifyKey, ValidatorSignature,
 }
 ```
@@ -291,10 +325,12 @@ pub trait TrxConsensus {
 ```
 
 ### 4.2 Precomputation Engine
+
+As described in the TrX paper (Section 5.1), much of the batch decryption computation can be done before it's safe to release decryption shares. The precomputation engine implements this optimization:
+
 ```rust
 pub struct PrecomputationEngine {
-    thread_pool: ThreadPool,
-    cache: LruCache<BlockHash, PrecomputedData>,
+    cache: Mutex<HashMap<Vec<u8>, PrecomputedData>>,
 }
 
 pub struct PrecomputedData {
@@ -304,22 +340,36 @@ pub struct PrecomputedData {
 }
 
 impl PrecomputationEngine {
-    /// Async precomputation during consensus
-    pub async fn precompute(
+    /// Precompute expensive KZG operations (paper Section 5.1)
+    ///
+    /// Can be called as soon as a block proposal is received, before
+    /// it's safe to release decryption shares. Operations are:
+    /// 1. Digest: compute KZG commitment (public, untrusted)
+    /// 2. Eval proofs: compute evaluation proofs (public, untrusted)
+    pub fn precompute(
         &self,
-        block: &Block,
+        batch: &[EncryptedTransaction],
+        context: &DecryptionContext,
         setup: &EpochSetup,
     ) -> Result<PrecomputedData> {
-        let (digest_handle, proofs_handle) = tokio::join!(
-            self.compute_digest_async(block, setup),
-            self.compute_proofs_async(block, setup)
-        );
-        
-        Ok(PrecomputedData {
-            digest: digest_handle?,
-            eval_proofs: proofs_handle?,
+        // Check cache first
+        let cache_key = compute_cache_key(batch, context);
+        if let Some(cached) = self.cache.lock().get(&cache_key) {
+            return Ok(cached.clone());
+        }
+
+        let start = Instant::now();
+        let digest = TrxCrypto::compute_digest(batch, context, setup)?;
+        let eval_proofs = TrxCrypto::compute_eval_proofs(batch, context, setup)?;
+
+        let data = PrecomputedData {
+            digest,
+            eval_proofs,
             computation_time: start.elapsed(),
-        })
+        };
+
+        self.cache.lock().insert(cache_key, data.clone());
+        Ok(data)
     }
 }
 ```
