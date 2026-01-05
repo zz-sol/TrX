@@ -12,7 +12,8 @@ use tracing::instrument;
 use super::engine::TrxCrypto;
 use crate::{
     verify_eval_proofs, BatchContext, DecryptionContext, EncryptedTransaction, EvalProof,
-    PartialDecryption, ThresholdEncryptionSecretKeyShare, TransactionBatchCommitment, TrxError,
+    PartialDecryption, ThresholdEncryptionSecretKeyShare, TransactionBatchCommitment,
+    TransactionEncryption, TrxError,
 };
 
 /// Collective decryption interface for consensus-layer transaction processing.
@@ -74,6 +75,10 @@ impl<B: PairingBackend<Scalar = Fr>> CollectiveDecryption<B> for TrxCrypto<B> {
         context: &DecryptionContext,
         setup: &super::setup::EpochSetup<B>,
     ) -> Result<TransactionBatchCommitment<B>, TrxError> {
+        // TODO: batch verify signatures on partial decryptions
+        for tx in batch {
+            TrxCrypto::<B>::verify_ciphertext(tx)?;
+        }
         TransactionBatchCommitment::compute(batch, context, setup)
     }
 
@@ -137,6 +142,10 @@ impl<B: PairingBackend<Scalar = Fr>> CollectiveDecryption<B> for TrxCrypto<B> {
         context: &DecryptionContext,
         setup: &super::setup::EpochSetup<B>,
     ) -> Result<Vec<EvalProof<B>>, TrxError> {
+        // TODO: batch verify signatures on partial decryptions
+        for tx in batch {
+            TrxCrypto::<B>::verify_ciphertext(tx)?;
+        }
         EvalProof::compute_for_batch(batch, context, setup)
     }
 
@@ -182,6 +191,11 @@ impl<B: PairingBackend<Scalar = Fr>> CollectiveDecryption<B> for TrxCrypto<B> {
         let parties = agg_key.public_keys.len();
         if parties == 0 {
             return Err(TrxError::InvalidConfig("no parties in agg key".into()));
+        }
+
+        // TODO: batch verify signatures on partial decryptions
+        for tx in &batch_ctx.transactions {
+            TrxCrypto::<B>::verify_ciphertext(tx)?;
         }
 
         if !batch_ctx.batch_proofs.proofs.is_empty() || !batch_ctx.transactions.is_empty() {
